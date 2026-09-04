@@ -1,7 +1,7 @@
 {
-  "name": "Feierabend Timer",
-  "short_name": "Feierabend",
-  "description": "Startzeit einstellen und automatisch sehen, wann Feierabend ist.",
+  "name": "Zeiten",
+  "short_name": "Zeiten",
+  "description": "Startzeit einstellen und automatisch die Endzeit berechnen.",
   "lang": "de-DE",
   "start_url": "./",
   "scope": "./",
