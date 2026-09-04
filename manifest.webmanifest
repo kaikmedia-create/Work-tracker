@@ -1,4 +1,5 @@
 {
+  "id": "./",
   "name": "Zeiten",
   "short_name": "Zeiten",
   "description": "Startzeit einstellen und automatisch die Endzeit berechnen.",
@@ -9,6 +10,7 @@
   "background_color": "#070b14",
   "theme_color": "#070b14",
   "icons": [
-    {"src":"icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}
+    {"src":"icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"},
+    {"src":"icon-512.png","sizes":"512x512","type":"image/png","purpose":"any maskable"}
   ]
 }
