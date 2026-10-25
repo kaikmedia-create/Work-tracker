@@ -1,4 +1,4 @@
-# Relief Studio 3
+# Relief Studio 4
 
 Zwei getrennte, geführte Abläufe für Kartenposter und druckbare Stadtreliefs. Bestehende Relief-Studio-2-Projektdateien bleiben lesbar. Keine externen JavaScript-Abhängigkeiten.
 
@@ -9,6 +9,15 @@ Zwei getrennte, geführte Abläufe für Kartenposter und druckbare Stadtreliefs.
 **Serverversion:** Node.js 22 oder neuer installieren. Im entpackten Ordner `node server.mjs` ausführen; dann `http://127.0.0.1:8080` öffnen. Im persönlichen ZIP ist das bekannte Testpasswort vorbereitet. `node setup.mjs` setzt ein eigenes Passwort. `auth.local.json` niemals veröffentlichen. Öffentliche Bereitstellung benötigt HTTPS, ein längeres Passwort und den bewusst konfigurierten HOST.
 
 **GitHub Pages:** `site/` enthält die verschlüsselte statische Vorschau. Die kurze PIN ersetzt keine serverseitige Authentifizierung. Kein Schutz vertraulicher Kundendaten. Der aktuelle Pages-Build besteht aus dem unveränderten v2-Grundpaket plus einem authentifiziert verschlüsselten v3-Update. `gate-v3.js` prüft die Ausgangsdateien vor Anwendung des Updates.
+
+## Neu in Version 4
+
+- Poster- und 3D-Abläufe bleiben konsequent getrennt. Im Kartenstil erscheint die Karte groß und ohne Titelblock; Text und Druckrahmen erst im nächsten Schritt.
+- Ostsee und andere offene Meeresflächen können jetzt über OSM-`natural=coastline`-Wege rekonstruiert werden; gesplittete Wege werden richtungstreu verbunden. Unvollständig kartierte oder weit entfernte reine See-Ausschnitte bleiben eine Datenquellen-Grenze.
+- Kartengeometrie ist auch im Vektor-PDF auf den Kartenrahmen begrenzt. Selbst bei flächenfüllendem Beschnitt werden Straßen, Polygone und Marker nicht in Titel oder weißen Außenrand gezeichnet.
+- Beim Ziehen eines Auswahl-Eckpunkts und beim Neuzeichnen bleibt das ursprüngliche Seitenverhältnis exakt erhalten, berechnet im Mercator-Projektionsraum. Trackpad-Radbewegungen werden in begrenzte Zoomstufen zusammengefasst.
+- Die Beschriftung der Ortsmarker ist einzeln auswählbar, mit eigener Schriftfamilie, Schriftfarbe und Punktfarbe. Die Postervorlage 60 × 80 cm ist ergänzt.
+- Der vom Nutzer gewünschte vollständige Verzicht auf OSM-Namensnennung ist nicht möglich: Der gedruckte Plan behält eine kleine lesbare Copyrightzeile im Außenrand; die interaktive OpenStreetMap-Karte ebenfalls. Weitere Quelle / Lizenz ist in Projektdatei und Hilfe dokumentiert.
 
 ## Poster
 
