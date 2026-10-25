@@ -1,3 +1,15 @@
+## Relief Studio 7 · Regressionsprüfung der Poster-Vorschau (25.10.2026)
+
+**Fehler reproduziert:** Vor dem Fix verwendete der Poster-Papiercontainer weiterhin das A4-Seitenverhältnis 210:297. Bei 60 × 80 cm war er z. B. im 1536×960-Viewport 421,77×596,48 px groß, das Canvas aber 428,25×571 px. Daraus entstanden rechts und unten überstehende weiße Flächen.
+
+**Behebung:** Dynamische Papiergröße/-ratio und Canvas deckungsgleich aus dem tatsächlich gewählten Exportformat berechnet; keine separate A4-CSS-Abmessung mehr. `overflow:hidden` sorgt zusätzlich für sauberen Randabschluss.
+
+**Nachgewiesen:** 54 unabhängige Browserprüfungen aus 8 Formaten × 6 Viewports plus Querformat (inkl. 1536×960, 2048×1294, 3200×1800, 1366×768, 1920×1080 und 390×844). Jede geprüft auf identische linke/obere/rechte/untere Koordinaten, gleiches Formatverhältnis und vollständigen Einschluss im Vorschaubereich. 38 Node-Logiktests bestanden. Zusätzlich 21 Export-/Desktop-Prüfungen: 60×80 cm PDF 600×800 mm, PNG/JPEG 7087×9449 Pixel bei 300 dpi und jeweils unter 8 MB.
+
+**Grenzen:** Mit synthetischem Stadtdatensatz getestet; reale externe Overpass-Erreichbarkeit, physischer Druck und Farbverbindlichkeit nicht abgenommen. Der PIN auf GitHub Pages ist keine serverseitige Authentifizierung.
+
+---
+
 # Relief Studio 6 — Testbericht — 25.10.2026
 
 ## Resultate

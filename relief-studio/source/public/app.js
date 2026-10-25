@@ -141,7 +141,21 @@ async function build(){
 function scheduleBuild(){if(settings.mode!=='model'||!data)return;clearTimeout(buildTimer);buildId++;building=true;mesh=null;labels();buildTimer=setTimeout(build,220);}
 function preview(){
  if(!data){$('poster-paper').hidden=true;return;}if(currentView==='design'){previewDesign();return;}if(currentView!=='poster')return;$('poster-empty').hidden=true;$('poster-paper').hidden=false;
- try{const scene=R.posterScene(data,settings,{preview:true,previewPixels:1000}),canvas=$('poster-canvas'),maxW=Math.max(200,$('view-poster').clientWidth-64),maxH=Math.max(250,$('view-poster').clientHeight-58),factor=Math.min(maxW/settings.paperW,maxH/settings.paperH),dpr=Math.min(devicePixelRatio||1,2);canvas.width=Math.round(settings.paperW*factor*dpr);canvas.height=Math.round(settings.paperH*factor*dpr);canvas.style.width=settings.paperW*factor+'px';canvas.style.height=settings.paperH*factor+'px';R.paintScene(canvas.getContext('2d'),scene,canvas.width/settings.paperW);if(scene.previewOmitted)$('poster-dim').title='Die Vorschau wurde für flüssige Bearbeitung vereinfacht. Der Export enthält alle Kartenelemente.';}catch(e){notify('Postervorschau: '+e.message,'error');}
+ try{
+  const scene=R.posterScene(data,settings,{preview:true,previewPixels:1000}),canvas=$('poster-canvas'),paper=$('poster-paper'),view=$('view-poster');
+  // The former A4-only CSS aspect-ratio made a 60×80 poster's backing sheet
+  // taller than its drawing surface. Size BOTH elements from the actual paper
+  // dimensions; otherwise a white strip remains below / to the right.
+  const cs=getComputedStyle(view),padX=parseFloat(cs.paddingLeft)+parseFloat(cs.paddingRight),padY=parseFloat(cs.paddingTop)+parseFloat(cs.paddingBottom);
+  const maxW=Math.max(1,view.clientWidth-padX-2),maxH=Math.max(1,view.clientHeight-padY-2);
+  const factor=Math.min(maxW/settings.paperW,maxH/settings.paperH),w=settings.paperW*factor,h=settings.paperH*factor,dpr=Math.min(devicePixelRatio||1,2);
+  paper.style.aspectRatio=settings.paperW+' / '+settings.paperH;
+  paper.style.width=w+'px';paper.style.height=h+'px';
+  canvas.style.width='100%';canvas.style.height='100%';
+  canvas.width=Math.max(1,Math.round(w*dpr));canvas.height=Math.max(1,Math.round(h*dpr));
+  R.paintScene(canvas.getContext('2d'),scene,canvas.width/settings.paperW);
+  $('poster-dim').title=scene.previewOmitted?'Die Vorschau wurde für flüssige Bearbeitung vereinfacht. Der Export enthält alle Kartenelemente.':'';
+ }catch(e){notify('Postervorschau: '+e.message,'error');}
 }
 function previewDesign(){
  if(!data)return;try{
@@ -221,5 +235,5 @@ window.addEventListener('offline',()=>notify('Du bist offline. Gespeicherte Proj
 
 if(!globalThis.RELIEF_STATIC_PREVIEW&&location.protocol!=='file:')fetch('api/status',{signal:AbortSignal.timeout(2500),headers:{Accept:'application/json'}}).then(r=>r.ok?r.json():null).then(j=>{if(j?.application==='relief-studio'&&j.server===true){R.server=true;$('logout-form').hidden=false;}}).catch(()=>{});
 // Diagnostics are local only. The interface exposes no credentials or remote administration.
-Object.defineProperty(globalThis,'ReliefStudio',{value:{get settings(){return {...settings};},get data(){return data;},get mesh(){return mesh;},get building(){return building;},view,exportPoster:()=>R.exportPoster(data,settings),get mode(){return settings.mode;},get started(){return started;},get panel(){return currentPanel;},version:'6.0.0'}});
+Object.defineProperty(globalThis,'ReliefStudio',{value:{get settings(){return {...settings};},get data(){return data;},get mesh(){return mesh;},get building(){return building;},view,exportPoster:()=>R.exportPoster(data,settings),get mode(){return settings.mode;},get started(){return started;},get panel(){return currentPanel;},version:'7.0.0'}});
 })(globalThis.RS);

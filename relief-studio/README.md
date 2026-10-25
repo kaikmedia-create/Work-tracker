@@ -1,3 +1,5 @@
+> **Relief Studio 7:** Poster-Vorschau auf allen Papierformaten korrigiert. Papierhintergrund und Canvas sind nun millimetergenau im selben Seitenverhältnis (auch 60 × 80 cm); kein weißer Überstand. Regressionsprüfung: `python tests/preview_alignment.py`. Weitere Details siehe TEST-REPORT.md.
+
 # Relief Studio 6
 
 Zwei getrennte, geführte Abläufe für Kartenposter und druckbare Stadtreliefs. Bestehende Relief-Studio-2-Projektdateien bleiben lesbar. Keine externen JavaScript-Abhängigkeiten.
