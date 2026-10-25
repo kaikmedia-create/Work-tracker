@@ -1,0 +1,17 @@
+{
+  "name": "relief-studio",
+  "version": "6.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Terrain-aware city relief and vector poster editor",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node server.mjs",
+    "setup": "node setup.mjs",
+    "test": "node --test tests/core.test.mjs tests/workflows.test.mjs tests/v5.test.mjs tests/v6_units.test.mjs tests/v6_gate.test.mjs",
+    "stress": "python tests/stress_browser.py && python tests/stress_server.py",
+    "test:ui": "python tests/v6_browser.py && python tests/workflow_browser.py"
+  }
+}
