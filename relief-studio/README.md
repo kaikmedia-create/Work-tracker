@@ -1,4 +1,4 @@
-# Relief Studio 5
+# Relief Studio 6
 
 Zwei getrennte, geführte Abläufe für Kartenposter und druckbare Stadtreliefs. Bestehende Relief-Studio-2-Projektdateien bleiben lesbar. Keine externen JavaScript-Abhängigkeiten.
 
@@ -8,7 +8,15 @@ Zwei getrennte, geführte Abläufe für Kartenposter und druckbare Stadtreliefs.
 
 **Serverversion:** Node.js 22 oder neuer installieren. Im entpackten Ordner `node server.mjs` ausführen; dann `http://127.0.0.1:8080` öffnen. Im persönlichen ZIP ist das bekannte Testpasswort vorbereitet. `node setup.mjs` setzt ein eigenes Passwort. `auth.local.json` niemals veröffentlichen. Öffentliche Bereitstellung benötigt HTTPS, ein längeres Passwort und den bewusst konfigurierten HOST.
 
-**GitHub Pages:** `site/` enthält die verschlüsselte statische Vorschau. Die kurze PIN ersetzt keine serverseitige Authentifizierung. Kein Schutz vertraulicher Kundendaten. Der Pages-Build besteht aus einem unveränderten verschlüsselten Grundpaket und verifizierten Update-Patches bis Version 5. `gate-v5.js` prüft vor dem Start jede Dateiprüfsumme.
+**GitHub Pages:** `site/` enthält jetzt eine eigenständige, einmalig AES-GCM-verschlüsselte Version 6. Die v6-Einstiegsdatei lädt nur `bundle6.json`, `bundle6-*.b64` und `gate-v6.js` statt aller historischen Upgrade-Patches. Die Kurz-PIN `2808` ist **keine sichere serverseitige Authentifizierung** und kann mit lokalem Ausprobieren erraten werden. Keine vertraulichen Daten auf der GitHub-Pages-Testseite ablegen. Historische Bundle-Dateien bleiben zur Kompatibilität in GitHub erhalten, werden aber von v6 nicht mehr benötigt.
+
+## Neu in Version 6
+
+- **Desktop-Layout ohne Scrollen der gesamten Seite:** für 1366×768 bis 3200×1800 getestet. Sidebar-Einstellungen scrollen bei Bedarf getrennt; mobile Browser behalten vertikales Scrolling. Große Poster nutzen die verfügbare Höhe, ohne Fußleiste und Druckbereich abzuschneiden.
+- **Format im Schritt „Text & Layout“:** Papierformat, Hoch-/Querformat, exakte Breite/Höhe bereits während der Gestaltung. Separater Regler für die **Kartenfläche (55–100 %)** und den **Außenrand (0–100 mm)**. Der Export-Schritt enthält nun nur DPI, PDF/JPEG/PNG und die abschließende Dateiprüfung.
+- **Quellenzeile steuerbar:** standardmäßig sichtbar. Ausblenden ausschließlich für eigene, nicht öffentlich genutzte Entwürfe. Sobald ein Poster weitergegeben oder veröffentlicht wird, muss eine angemessene OpenStreetMap-Namensnennung mit URL wieder enthalten sein; nicht kommerziell ist keine generelle Ausnahme. Interaktive OSM-Kartengrundlage behält ihren Quellenverweis.
+- **60×80 cm bei 300 dpi:** PNG und JPEG können auf passenden Desktopgeräten mit 7087×9449 Pixeln erzeugt werden; JFIF/pHYs-DPI-Daten werden geprüft. Der tatsächliche Test mit synthetischen Stadtdaten ergab ca. 1,2–1,5 MB. Bei komplexeren Daten und der 8-MB-Schranke kann die App die DPI reduzieren und informiert vor dem Download. **Vektor-PDF** bleibt die bevorzugte maximale Druckqualität ohne Pixelbegrenzung. Moderne Browser können durch Arbeitsspeicher die Rastergröße begrenzen.
+- **Schnellerer GitHub-Start:** ein neuer, konsistenter verschlüsselter v6-Codeblock anstatt historischer Patch-Ketten. Die 4-stellige PIN bietet trotz Verschlüsselung keinen Schutz für Kundendaten.
 
 ## Neu in Version 5
 
@@ -34,7 +42,7 @@ Zwei getrennte, geführte Abläufe für Kartenposter und druckbare Stadtreliefs.
 2. **Ort:** Stadt suchen, geografische Breite und Höhe in km einstellen und Karte laden. Für normale 2D-Poster wird kein 3D-Modell und kein Höhenraster benötigt.
 3. **Kartenstil:** Farbwelten, individuelle Farben, Straßenhierarchie, Gebäude und Wahrzeichen einstellen. Beschriftung ohne rechteckige Hintergründe; optional feine Schriftkontur. Höhenlinien und Höhenfärbung verlangen echte Geländedaten; fehlen diese, wird das Nachladen erklärt.
 4. **Text & Layout:** Klassisch, Modern, Editorial oder Nur Karte; Schriftfamilie, Gewicht, Großschreibung, Größe, Buchstabenabstand, Ausrichtung, Unterzeile, persönliche Zeile, Koordinaten, Text ober-/unterhalb der Karte, Trennlinie und Kartenrand. Bei „Nur Karte“ bleiben Texte gespeichert, werden aber nicht gedruckt.
-5. **Export:** Foto-/Rahmenformate, A5–A0 oder eigene Maße; Hoch-/Querformat; PDF, PNG, JPEG. Bei „Fläche füllen“ kann der geografische Rand abgeschnitten werden, bei „Ganzer Ausschnitt“ nicht.
+5. **Export:** Papierformate bereits im vorherigen Schritt einstellen; hier 150–600 dpi und PDF, PNG, JPEG wählen. Bei „Fläche füllen“ kann der geografische Rand abgeschnitten werden, bei „Ganzer Ausschnitt“ nicht.
 
 Maximal **8.000.000 Byte** pro Poster. Vektor-PDF besitzt echte Papiermaße. Rasterdateien enthalten DPI-Metadaten. Eine notwendige Reduktion wegen Speicher- oder Dateigrenzen wird vor dem Download angezeigt. Das PDF ist RGB, kein zertifiziertes PDF/X oder CMYK-Profil. Zeichen außerhalb WinAnsi werden im PDF transliteriert; für uneingeschränkte Browser-Schriftzeichen Rasterexport nutzen.
 
@@ -50,11 +58,12 @@ Noch nicht verfügbare Aktionen bleiben per Tastatur auffindbar. Anklicken erkl�
 
 Speichern erzeugt `.relief.json` mit Modus, Einstellungen und Kartendaten, ohne Zugangsdaten. Version 2 und 3 werden eingelesen; gespeichert wird Version 3. Ungültige Importe überschreiben das bestehende Projekt nicht. Moduswechsel behält die Daten. „Neu“ fragt vor Verwerfen eines geladenen Projekts nach.
 
-Externe Daten: OpenStreetMap/Overpass, Photon-Ortssuche, OSM-Grundkarte, Mapzen/AWS Terrain Tiles. Suchanfragen und Ausschnitte werden an diese Dienste übertragen. Kein Tracking. Quellenhinweise bleiben im Poster und in der Projektdatei. Keine Garantie für Verfügbarkeit öffentlicher Datendienste oder vollständige Gebäude-/Burghöhen.
+Externe Daten: OpenStreetMap/Overpass, Photon-Ortssuche, OSM-Grundkarte, Mapzen/AWS Terrain Tiles. Suchanfragen und Ausschnitte werden an diese Dienste übertragen. Kein Tracking. Die OpenStreetMap-Nennung kann für rein private Entwürfe ausgeblendet werden. Für Weitergabe muss sie aktiviert bleiben; Quellenangaben sind zusätzlich über „Quellen“ abrufbar. Keine Garantie für Verfügbarkeit öffentlicher Datendienste oder vollständige Gebäude-/Burghöhen.
 
 ## Entwicklung und Tests
 
-- `npm test`: Geometrie-, Projekt-, Layout- und Exporttests.
+- `npm test`: Geometrie-, Projekt-, Layout-, Gate- und Exporttests (einschließlich v6).
+- `python tests/v6_browser.py`: Desktoplayout, Weißraum und PDF/JPEG/PNG 60×80 cm bei 300 dpi (synthetische Daten).
 - `python tools/standalone.py`: Einzeldatei aus `public/` neu erzeugen.
 - `python tests/server_check.py`: tatsächliche lokale Serveranmeldung und Zugriffskontrolle.
 - `python tests/workflow_browser.py`: Browserregression mit ausdrücklich synthetischen Daten, simulierten Fehlern und echten Download-Dateien; benötigt Python Playwright und Chromium. `CHROMIUM` und `RELIEF_TEST_OUT` können als Umgebungsvariablen gesetzt werden.
@@ -65,3 +74,5 @@ Siehe `TEST-REPORT.md` für die tatsächlich ausgeführten Prüfungen und verble
 ## Lasttests
 
 `npm test`, `python tests/workflow_browser.py`, `python tests/stress_browser.py`, `python tests/stress_server.py` und `python tests/server_check.py`. Die Tests für die drei gleichzeitig geöffneten Browser erzeugen jeweils 22.000 synthetische Gebäude und 7.334 Straßen; keine echten OSM-Server werden dabei automatisiert belastet. `TEST-REPORT.md` nennt gemessene Laufzeiten und Beschränkungen.
+
+**GitHub-Quellcode:** Der textbasierte Anwendungscode ist im `relief-studio/source/`-Ordner des Repositories abgelegt. Die vom Browser geladene PIN-Version liegt separat unter `relief-studio/bundle6-*.b64`. Beide enthalten denselben Version-6-Stand.

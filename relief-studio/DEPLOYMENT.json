@@ -1,8 +1,10 @@
 {
-  "release": "v5",
+  "version": "6.0.0",
+  "target": "github-pages",
+  "account": "kaikmedia-create",
   "repository": "kaikmedia-create/Work-tracker",
-  "web_path": "relief-studio/",
-  "deploy": "GitHub Pages",
-  "authentication": "Static encrypted preview, not server-side protection",
-  "source": "See ZIP and offline index; customer data must not be trusted to GitHub Pages PIN"
+  "folder": "relief-studio",
+  "base_url": "https://kaikmedia-create.github.io/Work-tracker/relief-studio/",
+  "gating": "static encrypted AES-GCM bundle, not secure authentication",
+  "notes": "sources in relief-studio/source, zip is full project without credentials"
 }
