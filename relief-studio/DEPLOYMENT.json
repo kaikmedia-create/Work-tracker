@@ -1,0 +1,8 @@
+{
+  "release": "v5",
+  "repository": "kaikmedia-create/Work-tracker",
+  "web_path": "relief-studio/",
+  "deploy": "GitHub Pages",
+  "authentication": "Static encrypted preview, not server-side protection",
+  "source": "See ZIP and offline index; customer data must not be trusted to GitHub Pages PIN"
+}

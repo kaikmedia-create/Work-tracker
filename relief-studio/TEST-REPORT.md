@@ -1,4 +1,4 @@
-# Prüfprotokoll · Relief Studio 4 · 24.10.2026
+# Prüfprotokoll · Relief Studio 5 · 24.10.2026
 
 ## Tatsächlich erfolgreich ausgeführt
 
@@ -37,3 +37,21 @@ Statische GitHub-Pages-PIN: verschlüsseltes Programmpaket, aber keine serversei
 - Zusätzlicher interaktiver Browsertest: die große Kartenvorschau zeigt die Straße, der Reglerwert 5 wird aktualisiert, Markerfarbe und individuelle Markerwahl funktionieren.
 - 60 × 80 cm Vektor-PDF aus synthetischer Testkarte erstellt und per PyMuPDF geprüft: 60,000 × 80,000 cm, Copyright in der Ausgabedatei lesbar.
 - **Nicht nachgewiesen**: vollständiger realer Rostock-Liveabruf (öffentliche OSM-Abfrage war aus dieser lokalen Umgebung nicht erreichbar). Ein echter Printshop-Test und 3D-Probedruck stehen aus.
+
+## Version 5 – Performance- und Sicherheitstests (25.10.2026)
+
+- **31 von 31 Node-Tests** bestanden, inkl. großer Poster-Ausschnitte, defensiver JSON-Grenzen und Vorschau-Detailreduzierung.
+- **46 von 46 Chromium-Workflow-Checks** erneut bestanden: Poster, 3D, Abbruch/Fehler, Migration, STL/3MF, PNG/JPEG/PDF und mobile Ansichten.
+- **3 parallele Chromium-Instanzen mit jeweils 22.000 synthetischen Gebäuden + 7.334 Straßen**, pro Instanz 80 schnelle Regleränderungen und ein 60×80-cm-Vektor-PDF. Keine JavaScript-Ausnahmen, alle drei PDFs unter 8 MB.
+- **Kacheltest (vollständig lokal gemockt):** 28 sichtbare Testkachel-Anforderungen, maximal 5 gleichzeitig (konfiguriertes Maximum 5). Test erzeugt keine OSM-Netzwerklast.
+- **HTTP-Lasttest (localhost):** 320 authentifizierte kleine Statusanfragen, Parallelität 32, Messdauer 0.079 s, p95 13.6 ms (Messwerte ausschließlich auf Testhost/localhost, keine Aussage über Internetlast).
+- **Server-Sicherheit:** CSP- und Anti-Framing-Header, HttpOnly/SameSite-Cookie, übergroße Logins HTTP 413, API-Rate-Limit 429, Traversalschutz und Verweigerung öffentlicher Bind ohne HTTPS plus starkes Passwort geprüft.
+- **3D-Raster-Benchmark:** 641 Rasterpunkte horizontal, 503 synthetische Gebäude: 387.722 Vertices und 775.440 Dreiecke in etwa 177 ms (ein lokaler Node-Prozess, Hardware abhängig).
+
+### Messwerte der parallelen Browserläufe
+
+- Browser 1: 80 Regleränderungen 1790 ms; PDF 1126 ms; 621,494 Byte; Fehler: 0.
+- Browser 2: 80 Regleränderungen 1787 ms; PDF 1159 ms; 621,494 Byte; Fehler: 0.
+- Browser 3: 80 Regleränderungen 1866 ms; PDF 1074 ms; 621,494 Byte; Fehler: 0.
+
+**Grenzen:** Live-Verfügbarkeit und lizenzgerechte kommerzielle Belastbarkeit von Overpass / OSM kann durch lokale Tests nicht bestätigt werden. Die öffentliche Vorschau mit PIN `2808` ist trotz Verschlüsselung offline angreifbar und ersetzt keine serverseitige Anmeldung. Der Start des eigenen Node-Servers unter einer echten CSP wurde über HTTP-Header und Komponenten geprüft; Chromium blockierte die Verbindung zu `localhost` in der Testumgebung, sodass ein CSP-Browser-Test am echten Server nicht abgeschlossen wurde. Keine Garantie für reale Printshops oder physischen 3D-Druck.
