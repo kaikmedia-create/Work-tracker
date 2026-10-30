@@ -1,3 +1,7 @@
+# Version 10 — Datenabruf und Markenauftritt
+
+Getrennter OSM-Basisabruf und optionaler Landmarkenabruf; datenbasierte Fortschrittsmeldungen (Bytes, Kacheln, abgeschlossene Schritte), definierte Zeitlimits bei Inaktivität, vereinfachtes 3-Farben-Logo und Favicon. Siehe README und TEST-REPORT.
+
 # Relief Studio 9 — Foz/Region/Historische Marker
 
 - Foz: **GALICIA · SPAIN**, DE: jeweiliges Bundesland · DEUTSCHLAND; länderabhängige Sprache.

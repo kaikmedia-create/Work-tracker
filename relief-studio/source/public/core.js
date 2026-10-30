@@ -232,6 +232,7 @@ function parseOSM(raw,bounds) {
   const named=String(t.name||t['name:en']||t['name:de']||'').trim();
   const isPOI=!!(t.historic||t.heritage||['attraction','museum','artwork','gallery','viewpoint'].includes(t.tourism)||t.amenity==='place_of_worship'||['tower','lighthouse'].includes(t.man_made)||/castle|cathedral|church/.test(t.building||''));
   if(isPOI&&named){
+   if(!c.length&&e.center&&Number.isFinite(e.center.lon)&&Number.isFinite(e.center.lat))c=[[e.center.lon,e.center.lat]];
    if(!c.length&&e.type==='relation')c=(e.members||[]).flatMap(m=>coords(m)).slice(0,20000);
    if(c.length){const xy=normalized(bounds,[centroid(c)])[0];
     if(xy[0]>=0&&xy[0]<=1&&xy[1]>=0&&xy[1]<=1)landmarks.push({id:e.type+'/'+e.id,name:named.slice(0,120),point:xy,category:landmarkCategory(t),priority:landmarkPriority(t),source:'OpenStreetMap'});

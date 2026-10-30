@@ -25,7 +25,19 @@ function authorized(req){const match=(req.headers.cookie||'').match(/(?:^|; )rel
 function sameOrigin(req){if(!req.headers.origin)return true;try{return new URL(req.headers.origin).host===req.headers.host;}catch{return false;}}
 async function body(req){const chunks=[];let n=0;for await(const c of req){n+=c.length;if(n>2048)throw Error('Anfrage zu groß.');chunks.push(c);}return Buffer.concat(chunks).toString('utf8');}
 function cookie(value,maxAge){return `relief_session=${value}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAge}${HTTPS?'; Secure':''}`;}
-async function remote(url,options={},limit=25000000){const response=await fetch(url,{...options,signal:AbortSignal.timeout(70000),headers:{'User-Agent':'ReliefStudio/9.0 (+https://github.com/kaikmedia-create/Work-tracker)',...(options.headers||{})}});if(!response.ok)throw Error('Datendienst HTTP '+response.status);const chunks=[];let n=0;for await(const chunk of response.body){n+=chunk.length;if(n>limit)throw Error('Ausschnitt zu groß für den Datendienst.');chunks.push(chunk);}return Buffer.concat(chunks);}
+async function remote(url,options={},limit=25000000){
+ const controller=new AbortController(),header=setTimeout(()=>controller.abort(),58000);
+ let response;try{response=await fetch(url,{...options,signal:controller.signal,headers:{'User-Agent':'ReliefStudio/10.0 (+https://github.com/kaikmedia-create/Work-tracker)',...(options.headers||{})}});}catch(e){throw controller.signal.aborted?Error('Overpass hat 58 Sekunden lang keine Antwort geliefert.'):e;}finally{clearTimeout(header);}
+ if(!response.ok)throw Error('Datendienst HTTP '+response.status);
+ const chunks=[];let n=0,start=Date.now();
+ const reader=response.body?.getReader();if(!reader){const v=Buffer.from(await response.arrayBuffer());if(v.length>limit)throw Error('Ausschnitt zu groß für den Datendienst.');return v;}
+ try{while(true){const remaining=185000-(Date.now()-start);if(remaining<=0)throw Error('Maximale Datenübertragungszeit erreicht.');let timeout;
+   const next=Promise.race([reader.read(),new Promise((_,reject)=>{timeout=setTimeout(()=>reject(Error('Der Datendienst überträgt keine weiteren Bytes.')),Math.min(26000,remaining));})]);
+   let result;try{result=await next;}finally{clearTimeout(timeout);}
+   if(result.done)break;n+=result.value.length;if(n>limit)throw Error('Ausschnitt zu groß für den Datendienst.');chunks.push(Buffer.from(result.value));
+  }return Buffer.concat(chunks);
+ }catch(error){reader.cancel().catch(()=>{});throw error;}finally{try{reader.releaseLock();}catch{}}
+}
 async function cached(id,fn,type){const entry=cache.get(id);if(entry&&entry.expires>Date.now())return entry.body;const buffer=await fn();if(buffer.length<8000000){while(cacheBytes+buffer.length>48000000&&cache.size){const first=cache.keys().next().value;cacheBytes-=cache.get(first).body.length;cache.delete(first);}if(cache.has(id))cacheBytes-=cache.get(id).body.length;cache.set(id,{body:buffer,expires:Date.now()+3600000,type});cacheBytes+=buffer.length;}return buffer;}
 const apiTraffic=new Map();
 function throttleAPI(req,key,limit){
@@ -63,7 +75,8 @@ const server=http.createServer(async(req,res)=>{
  if(path==='/api/map'){
   if(throttleAPI(req,'map',12)){send(res,429,JSON.stringify({error:'Zu viele Kartendaten-Anfragen. Bitte nach einer Minute erneut versuchen.'}),'application/json',{'Retry-After':'60'});return;}
   const b=(url.searchParams.get('bbox')||'').split(',').map(Number);try{R.validateBounds(b,url.searchParams.get('mode')==='poster'?'poster':'model');}catch(e){send(res,400,e.message,'text/plain');return;}
-  const payload=await cached('map:'+b.join(','),async()=>{let last;for(const host of ['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter'])try{return await remote(host,{method:'POST',body:new URLSearchParams({data:R.osmQuery(b)})});}catch(e){last=e;}throw last;});send(res,200,payload,'application/json');return;
+  const layer=url.searchParams.get('layer')==='pois'?'pois':'base';
+  const payload=await cached('map:v10:'+layer+':'+b.join(','),async()=>{let last;for(const host of ['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter'])try{return await remote(host,{method:'POST',body:new URLSearchParams({data:layer==='pois'?R.poiQuery(b):R.osmQuery(b)})},layer==='pois'?5_000_000:24_000_000);}catch(e){last=e;if(/HTTP 429/i.test(e.message))break;}throw last;});send(res,200,payload,'application/json');return;
  }
  const tile=path.match(/^\/api\/terrain\/(\d+)\/(\d+)\/(\d+)\.png$/);
  if(tile){if(throttleAPI(req,'terrain',100)){send(res,429,JSON.stringify({error:'Zu viele Höhenkachel-Anfragen. Bitte später erneut versuchen.'}),'application/json',{'Retry-After':'60'});return;}const [z,x,y]=tile.slice(1).map(Number);if(z<1||z>15||x>=2**z||y>=2**z){send(res,400,'Ungültige Höhenkachel.','text/plain');return;}const buffer=await cached(path,()=>remote(`https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${x}/${y}.png`,{},1000000));send(res,200,buffer,'image/png');return;}

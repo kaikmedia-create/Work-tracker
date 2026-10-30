@@ -1,3 +1,22 @@
+# Prüfprotokoll Relief Studio 10 · 30.10.2026
+
+## Erfolgreiche lokale Tests (keine Last auf öffentlichen OSM-Servern)
+
+- **61 Node-Tests bestanden:** historische Geometrie-/Poster-/Küstentests plus sieben neue Datenstream- und Marken-Tests. Geprüft: Aufteilung in Kartengrundlage und optionale historische POIs; verifizierte Bytezähler; bekannte Content-Length; Downloads länger als Inaktivitätslimit nur mit echten Datenpaketen; Abbruch bei Stillstand ohne erfundenen Prozentwert; optionaler POI-HTTP-503 ohne Kartenverlust; exakt drei SVG-Grundfarben.
+- **46 Browser-Workflow-Prüfungen bestanden** (synthetische Stadtkarte): Poster, 3D, Fehler-/Abbruchmeldungen, Export und responsive Navigation.
+- **12 zusätzliche Version-10-Browserprüfungen bestanden:** Warteanzeige ohne Prozentwert vor erstem Byte, echte 50 % bei 64/128 KB, sichtbare Schritte, POI-Ausfallmeldung, UI auf 1366×768 bis 3200×1800, keine unbehandelten JS-Fehler.
+- **16 Desktop-Navigationstests bestanden** auf acht Viewports für Poster und 3D.
+- **10 Server-Sicherheitsprüfungen bestanden:** lokale Anmeldung, unautorisierter API-/Quellzugriff, Pfadvalidierung, Ratenlimit und Logout.
+- **Online-Gate:** AES-GCM-Paket wird vor Veröffentlichung mit PIN 2808 lokal entschlüsselt und auf enthaltene Dateien geprüft; falsche PIN öffnet die Anwendung nicht. Kurze PIN ist kein sicherer Zugriffsschutz.
+
+## Grenzen
+
+Öffentliche Overpass-Dienste können unabhängig von der Anwendung ausfallen oder Anfragen ablehnen (429, 504, Laufzeit-/Speicherfehler). Während serverseitiger Verarbeitung ohne empfangene Bytes kann kein echter Prozentfortschritt berechnet werden. Zuerst die schlankere Kartenbasis, danach optional historische Orte; ein POI-Ausfall erzeugt eine sichtbare Warnung und nur 15 Minuten Cache-Lebensdauer. Nach 26 Sekunden ohne weitere empfangene Bytes wird ein laufender Datenstream abgebrochen, auch wenn seine Gesamtmenge noch unbekannt ist. Bei fortlaufendem Transfer maximal 185 Sekunden pro Antwort. Die beiden Overpass-Instanzen werden sequenziell befragt.
+
+Synthetische Mock-Tests beweisen **nicht** die aktuelle Verfügbarkeit von Overpass oder die vollständige Foz-/Weinheim-Datenqualität. Die GitHub-Pages-PIN bleibt eine schwache Vorschau-Sperre; der eigene Node-Server besitzt eine echte Server-Session und braucht für öffentliche Nutzung HTTPS sowie ein neues langes Passwort.
+
+---
+
 # Relief Studio 9 — Prüfergebnisse (30.10.2026)
 
 **Tatsächlich lokal ausgeführt:**

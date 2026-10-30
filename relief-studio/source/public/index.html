@@ -3,15 +3,15 @@
 <html lang="de">
 <head>
 <meta charset="utf-8"/><meta content="width=device-width,initial-scale=1" name="viewport"/>
-<meta content="#244d40" name="theme-color"/><meta content="Städte als 3D-Relief und hochwertige Kartenposter gestalten. Echtes Gelände, individuelle Maße und geprüfte Druckexporte." name="description"/>
+<meta content="#183C36" name="theme-color"/><meta content="Städte als 3D-Relief und hochwertige Kartenposter gestalten. Echtes Gelände, individuelle Maße und geprüfte Druckexporte." name="description"/>
 <title>Relief Studio — Dein Ort. Deine Perspektive.</title>
 <link href="favicon.svg" rel="icon" type="image/svg+xml"/><link rel="alternate icon" href="favicon.ico"><link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="stylesheet" href="style.css">
 </head>
 <body data-mode="choose">
 <header class="topbar">
-<a aria-label="Relief Studio Startseite" class="brand" href="#" id="home"><img alt="" height="36" src="favicon.svg" width="36"/><span>Relief<span class="brand-light">Studio</span><small>CARTOGRAPHIC ATELIER</small></span></a>
-<div class="project-state"><span class="dot"></span><span id="project-state">Neues Projekt</span><span class="version">03</span></div>
+<a aria-label="Relief Studio Startseite" class="brand" href="#" id="home"><img alt="" height="36" src="favicon.svg" width="36"/><span>Relief<span class="brand-light">Studio</span><small>RELIEF MAP ATELIER</small></span></a>
+<div class="project-state"><span class="dot"></span><span id="project-state">Neues Projekt</span><span class="version">10</span></div>
 <nav aria-label="Projektaktionen" class="header-actions"><button class="ghost" hidden="" id="switch-mode">Modus wechseln</button><button class="ghost" id="new-project">＋ Neu</button><button class="ghost" id="open-project">Öffnen</button><button class="ghost" disabled="" hidden="" id="save-project">Speichern</button><button class="primary" hidden="" id="export-top">Exportieren <span>↗</span></button></nav>
 </header>
 <div class="access-note" hidden="" id="access-note"></div>
@@ -137,11 +137,22 @@
 <div class="view model-view" hidden="" id="view-model"><canvas aria-label="Drehbares 3D-Stadtrelief" id="model-canvas" tabindex="0"></canvas><div class="model-controls"><button class="selected" id="isometric">Perspektive</button><button id="topview">Von oben</button><button id="model-reset" title="Ansicht zurücksetzen">↺</button></div><div class="north"><span>↑</span>N</div><div class="model-tip">Ziehen zum Drehen · Scrollen zum Zoomen</div><div class="empty-state" id="model-empty"><span>◈</span><h3>Ein Stück Stadt. In deiner Hand.</h3><p>Wähle deinen Ausschnitt und erstelle die Karte.<br/>Danach werden Gelände und Gebäude hier sichtbar.</p><button class="primary" id="empty-load">Karte erstellen →</button></div></div>
 <div class="view design-view" hidden="" id="view-design"><canvas aria-label="Große Kartenstil-Vorschau: Straßen, Farben und Ortsmarker" id="design-canvas"></canvas><span class="design-tip">Kartenstil in groß · Titel und Posterrahmen folgen im nächsten Schritt</span></div>
 <div class="view poster-view" hidden="" id="view-poster"><div class="poster-paper" id="poster-paper"><canvas aria-label="Druckvorschau des Kartenposters" id="poster-canvas"></canvas></div><div class="empty-state" id="poster-empty"><span>▤</span><h3>Dein Ort als Original.</h3><p>Erstelle zuerst eine Karte, um das Poster zu gestalten.</p></div><span class="poster-dim" id="poster-dim">21 × 29,7 cm</span></div>
-<div class="loader" hidden="" id="loader"><div class="loader-card"><span class="spinner"></span><h3 id="loader-title">Daten werden geladen</h3><p id="loader-text">Echte Karten. Echte Höhen.</p><progress id="progress" max="1" value="0"></progress><button class="ghost" id="cancel-load">Abbrechen</button></div></div>
+<div class="loader" hidden="" id="loader"><section aria-label="Fortschritt der Kartenerstellung" aria-live="polite" class="loader-card">
+<div class="loader-brand"><img src="favicon.svg" alt="" width="32" height="32"><span>RELIEF STUDIO <b>10</b></span></div>
+<div class="loader-heading"><span class="spinner" aria-hidden="true"></span><h3 id="loader-title">Karte wird aufgebaut</h3></div>
+<p class="loader-intro" id="loader-text">Verbindung zum Kartendienst wird hergestellt.</p>
+<div class="loader-section"><span id="loader-stage">Datenabruf</span><strong id="loader-percent">Messung läuft …</strong></div>
+<progress id="progress" max="1"></progress>
+<div class="loader-detail" id="loader-detail">Noch keine Daten empfangen.</div>
+<div class="loader-phases" id="loader-phases" aria-label="Einzelne Verarbeitungsschritte"></div>
+<div class="loader-meta"><span id="loader-overall">0 von 3 Schritten abgeschlossen</span><span id="loader-elapsed">00:00</span></div>
+<p class="loader-idle" id="loader-idle">Warte auf echte Daten. Keine künstliche Fortschrittsanzeige.</p>
+<button class="secondary loader-cancel" id="cancel-load" type="button">Laden abbrechen</button>
+</section></div>
 </div>
 <div class="stage-bottom"><div class="stat"><span id="metric-a-label">AUSSCHNITT</span><strong id="metric-a">3,20 × 3,00 km</strong></div><div class="stat"><span id="metric-b-label">MODELLGRÖẞE INKL. RAHMEN</span><strong id="metric-b">208 × 196 mm</strong></div><div class="stat"><span id="metric-c-label">DATENSTATUS</span><strong id="metric-c">Noch nicht geladen</strong></div><button class="quality-button" id="quality-toggle">Datenqualität <span>↗</span></button></div>
 <div class="quality-panel" hidden="" id="quality-panel"><h3>Was im Modell steckt.</h3><div id="quality-content"><p>Die Datenqualität wird nach dem Laden angezeigt.</p></div></div>
-<footer class="main-footer"><span>RELIEF STUDIO <b>9.0</b></span><span>Echte Geografie. Bewusste Gestaltung.</span><button class="text-button" id="help">Hilfe &amp; Quellen</button></footer>
+<footer class="main-footer"><span>RELIEF STUDIO <b>10.0</b></span><span>Echte Geografie. Bewusste Gestaltung.</span><button class="text-button" id="help">Hilfe &amp; Quellen</button></footer>
 </main>
 </div>
 <div aria-live="polite" class="toast" hidden="" id="toast" role="status"></div>

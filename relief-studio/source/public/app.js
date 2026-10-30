@@ -219,11 +219,48 @@ function previewDesign(){
  }catch(e){notify('Kartenstil-Vorschau: '+e.message,'error');}
 }
 let previewTimer;const schedulePreview=()=>{clearTimeout(previewTimer);previewTimer=setTimeout(()=>{if(currentView==='poster'||currentView==='design')preview();},120);};new ResizeObserver(schedulePreview).observe($('view-poster'));new ResizeObserver(schedulePreview).observe($('view-design'));
-function progress(text,value){$('loader-text').textContent=text;$('progress').value=value||0;}
+const loadStepLabels={base:'Gebäude, Straßen & Wasser',pois:'Historische Orte',terrain:'Echte Geländehöhen',process:'Karte aufbereiten'};
+let activeLoadStages=[],loadStates={},loadStartedAt=0,lastBytesAt=0,loadClock=null;
+function clockString(ms){const s=Math.floor(ms/1000);return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');}
+function resetLoader(terrain){
+ activeLoadStages=['base','pois',...(terrain?['terrain']:[]),'process'];loadStates=Object.fromEntries(activeLoadStages.map(k=>[k,'pending']));
+ loadStartedAt=lastBytesAt=Date.now();clearInterval(loadClock);$('progress').removeAttribute('value');$('loader-percent').textContent='Messung läuft …';$('loader-text').textContent='Die Daten werden Schritt für Schritt geladen.';
+ $('loader-detail').textContent='OpenStreetMap berechnet die Anfrage. Bisher noch keine Daten empfangen.';
+ const list=$('loader-phases');list.replaceChildren();for(const [i,key] of activeLoadStages.entries()){
+  const row=document.createElement('div');row.className='loader-phase';row.dataset.phase=key;const marker=document.createElement('span');marker.className='phase-icon';marker.textContent=String(i+1);const title=document.createElement('span');title.textContent=loadStepLabels[key];row.append(marker,title);list.append(row);
+ }
+ const tick=()=>{const elapsed=Date.now()-loadStartedAt,idle=Date.now()-lastBytesAt;$('loader-elapsed').textContent=clockString(elapsed);$('loader-idle').textContent=idle>=15000?'Seit '+Math.floor(idle/1000)+' s keine neuen Daten übertragen. Der Abruf endet bei anhaltendem Stillstand.':'Nur echte empfangene Daten und abgeschlossene Schritte zählen als Fortschritt.';};
+ tick();loadClock=setInterval(tick,1000);refreshLoadSteps();
+}
+function refreshLoadSteps(){let done=0;for(const k of activeLoadStages){const st=loadStates[k];const el=document.querySelector('.loader-phase[data-phase="'+k+'"]');if(!el)continue;el.className='loader-phase '+(st==='done'?'complete':st==='skipped'?'skipped':st==='pending'?'':'active');el.querySelector('.phase-icon').textContent=st==='done'?'✓':st==='skipped'?'–':String(activeLoadStages.indexOf(k)+1);if(st==='done'||st==='skipped')done++;}
+ $('loader-overall').textContent=`${done} von ${activeLoadStages.length} Schritten abgeschlossen`;
+}
+function progress(event,value){
+ if(typeof event==='string'){$('loader-text').textContent=event;$('loader-detail').textContent=event;if(Number.isFinite(value)){$('progress').value=Math.max(0,Math.min(1,value));$('loader-percent').textContent=Math.round(value*100)+' % · Verarbeitung';}else{$('progress').removeAttribute('value');$('loader-percent').textContent='Verarbeitung';}return;}
+ if(!event||typeof event!=='object')return;
+ const {phase,status,detail,received,total,done,total:tilesTotal,count}=event;
+ if(phase==='cache'){
+  for(const key of activeLoadStages)loadStates[key]='done';refreshLoadSteps();$('loader-percent').textContent='Aus Cache';$('progress').value=1;$('loader-detail').textContent=detail||'Lokal gespeichert';return;
+ }
+ if(phase&&phase in loadStates){loadStates[phase]=status==='done'?'done':status==='skipped'?'skipped':status||'waiting';refreshLoadSteps();}
+ if(detail)$('loader-detail').textContent=detail;
+ if(phase&&loadStepLabels[phase])$('loader-stage').textContent=loadStepLabels[phase];
+ if(phase==='base'||phase==='pois'){
+  if(status==='bytes'&&received>0){lastBytesAt=Date.now();$('loader-detail').textContent='Der Server liefert Kartendaten. Die Übertragung läuft.';const mb=n=>(n/1024/1024).toLocaleString('de-DE',{maximumFractionDigits:2});$('loader-percent').textContent=total>0?Math.min(100,Math.round(received/total*100))+' % Datenübertragung':'Datenübertragung';$('loader-text').textContent=mb(received)+' MB empfangen'+(total?' / '+mb(total)+' MB':' (Gesamtgröße unbekannt)');if(total>0)$('progress').value=Math.min(1,received/total);else $('progress').removeAttribute('value');}
+  else if(status==='waiting'||status==='retry'){$('progress').removeAttribute('value');$('loader-percent').textContent='Warten · keine Prozentangabe';$('loader-text').textContent='Warte auf Antwort des OpenStreetMap-Dienstes';}
+  else if(status==='headers'){$('progress').removeAttribute('value');$('loader-percent').textContent='Antwort eingetroffen';}
+  else if(status==='parsing'){$('loader-percent').textContent='Daten werden geprüft';$('progress').removeAttribute('value');}
+  else if(status==='done'){$('loader-percent').textContent=(count||0).toLocaleString('de-DE')+' Objekte';$('progress').value=1;}
+  else if(status==='skipped'){$('loader-percent').textContent='Teilweise geladen';$('progress').removeAttribute('value');}
+ }else if(phase==='terrain'&&status==='tiles'){
+  if(done>0)lastBytesAt=Date.now();$('loader-percent').textContent=done+' / '+tilesTotal+' Kacheln';$('loader-text').textContent='Höhenraster wird empfangen';$('progress').value=tilesTotal?done/tilesTotal:0;
+ }else if(phase==='process'){$('loader-percent').textContent=status==='done'?'Verarbeitung abgeschlossen':'Verarbeitung läuft';$('progress').removeAttribute('value');}
+}
+
 async function load(){
  if(abort||exporting)return;try{R.validateBounds(bounds,settings.mode);}catch(e){notify(e.message,'error');return;}
  const controller=new AbortController(),epoch=++loadEpoch;abort=controller;
- $('loader').hidden=false;$('loader-title').textContent=settings.mode==='poster'?'Deine Posterkarte wird geladen.':'Dein Stadtrelief nimmt Form an.';$('cancel-load').hidden=false;labels();const selected=bounds.slice();
+ $('loader').hidden=false;$('loader-title').textContent=settings.mode==='poster'?'Deine Posterkarte entsteht.':'Dein Stadtrelief entsteht.';$('cancel-load').hidden=false;resetLoader(settings.mode==='model'||settings.contours||settings.hillshade);labels();const selected=bounds.slice();
  try{
   const loaded=await R.loadMap(selected,{signal:controller.signal,onProgress:progress,refresh:$('force-refresh').checked,mode:settings.mode,terrainRequired:settings.mode==='model'||settings.contours||settings.hillshade});
   if(controller.signal.aborted||epoch!==loadEpoch)return;
@@ -234,19 +271,20 @@ async function load(){
   if(settings.mode==='model'){progress('Geschlossenes Relief wird berechnet',.92);await build();if(!mesh){panel('model');quality();return;}}
   panel(settings.mode==='poster'?'style':'model');quality();preview();
   const coastWarnings=(data.warnings||[]).filter(w=>/Küste|Küsten|Meer|Meeresfläche/.test(w));
-  notify(`${number(data.buildings.length,0)} Gebäude und ${number(data.roads.length,0)} Straßen-/Wasserlinien geladen.${data.terrain.available===false?' Für dieses 2D-Poster wurde kein Gelände benötigt.':' Echtes Gelände ist enthalten.'} ${coastWarnings.length?coastWarnings.slice(0,2).join(' '):'Projekt über „Speichern“ sichern.'}`,coastWarnings.length?'warning':'success');
+  const historicWarnings=(data.warnings||[]).filter(w=>/historische Orte|Sehenswürdigkeiten/i.test(w));
+  notify(`${number(data.buildings.length,0)} Gebäude und ${number(data.roads.length,0)} Straßen-/Wasserlinien geladen.${data.terrain.available===false?' Für dieses 2D-Poster wurde kein Gelände benötigt.':' Echtes Gelände ist enthalten.'} ${coastWarnings.length?coastWarnings.slice(0,2).join(' '):historicWarnings.length?historicWarnings[0]:'Projekt über „Speichern“ sichern.'}`,coastWarnings.length||historicWarnings.length?'warning':'success');
  }catch(e){controller.abort();if(e.name==='AbortError')notify('Laden abgebrochen. Deine vorherigen Kartendaten bleiben erhalten.','info');else notify('Karte konnte nicht geladen werden: '+e.message+' Bitte erneut versuchen, einen kleineren Ausschnitt wählen oder eine gespeicherte Projektdatei öffnen.','error',{label:'Erneut versuchen',run:load});}
- finally{if(epoch===loadEpoch){abort=null;$('loader').hidden=true;labels();}}
+ finally{if(epoch===loadEpoch){abort=null;clearInterval(loadClock);loadClock=null;$('loader').hidden=true;labels();}}
 }
 function download(blob,name){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),45000);}
 function slug(){return (settings.title||'karte').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9-]+/g,'-').replace(/^-|-$/g,'').toLowerCase()||'karte';}
 async function prepareExport(){
- const blocked=commonReason();if(blocked){explain(blocked);return;}exporting=true;labels();$('loader').hidden=false;$('loader-title').textContent='Druckdatei wird vorbereitet.';$('cancel-load').hidden=true;availability('export-poster','Die Druckdatei wird vorbereitet.');await nextFrame();
+ const blocked=commonReason();if(blocked){explain(blocked);return;}exporting=true;labels();$('loader').hidden=false;$('loader-title').textContent='Druckdatei wird vorbereitet.';$('cancel-load').hidden=true;$('loader-phases').replaceChildren();$('loader-idle').textContent='Der Export wird lokal berechnet.';$('loader-overall').textContent='Exportvorgang';$('loader-elapsed').textContent='';availability('export-poster','Die Druckdatei wird vorbereitet.');await nextFrame();
  try{const result=await R.exportPoster(data,settings,progress);const name=`${slug()}-${settings.paperW}x${settings.paperH}mm${result.dpi?'-'+Math.round(result.dpi)+'dpi':''}.${result.extension}`;pendingExport={...result,name};$('export-result').textContent=result.summary;$('export-filename').textContent=name;$('export-details').textContent=`${number(result.blob.size,0)} von 8.000.000 Byte · ${result.vector?'RGB · Vektor':'RGB · Rasterbild'}`;$('file-icon').textContent=result.extension.toUpperCase();$('export-warnings').replaceChildren();
  const warnings=[...result.warnings];if(stale())warnings.push('Der geänderte Ausschnitt wurde noch nicht geladen. Diese Datei verwendet die zuletzt geladenen Kartendaten.');for(const text of warnings){const p=document.createElement('p');p.className='warning';p.textContent=text;$('export-warnings').append(p);}$('export-dialog').showModal();}
  catch(e){notify(e.message,'error');}finally{exporting=false;$('loader').hidden=true;labels();}
 }
-function sources(){return `RELIEF STUDIO 4\n${settings.title}\n\nAusschnitt (West, Süd, Ost, Nord): ${data.bounds.join(', ')}\nAbgerufen: ${data.capturedAt||'nicht angegeben'}\nOSM-Stand: ${data.osmTimestamp||'nicht angegeben'}\n\nKartendaten © OpenStreetMap-Mitwirkende — ODbL 1.0\nhttps://www.openstreetmap.org/copyright\n\nGelände: ${data.terrain.source||'Import'}\nQuellen/Lizenzen: https://github.com/tilezen/joerd/blob/master/docs/attribution.md\n\nGebäudehöhen: ausdrückliche OSM-Höhe, Geschosszahl × 3 m oder gekennzeichneter Standardwert.\nGeländeüberhöhung: ${settings.terrainFactor*100} %\nGebäudeüberhöhung: ${settings.buildingFactor*100} %\nZusätzliche Wahrzeichenüberhöhung: ${settings.landmarkFactor*100} %\n\nVereinfachtes Rasterrelief, kein vermessenes Architekturmodell. Farben nur Vorschau.\nQuellenhinweise bei Weitergabe und Verkauf berücksichtigen; diese Datei ist keine Rechtsberatung.\n`;}
+function sources(){return `RELIEF STUDIO 10\n${settings.title}\n\nAusschnitt (West, Süd, Ost, Nord): ${data.bounds.join(', ')}\nAbgerufen: ${data.capturedAt||'nicht angegeben'}\nOSM-Stand: ${data.osmTimestamp||'nicht angegeben'}\n\nKartendaten © OpenStreetMap-Mitwirkende — ODbL 1.0\nhttps://www.openstreetmap.org/copyright\n\nGelände: ${data.terrain.source||'Import'}\nQuellen/Lizenzen: https://github.com/tilezen/joerd/blob/master/docs/attribution.md\n\nGebäudehöhen: ausdrückliche OSM-Höhe, Geschosszahl × 3 m oder gekennzeichneter Standardwert.\nGeländeüberhöhung: ${settings.terrainFactor*100} %\nGebäudeüberhöhung: ${settings.buildingFactor*100} %\nZusätzliche Wahrzeichenüberhöhung: ${settings.landmarkFactor*100} %\n\nVereinfachtes Rasterrelief, kein vermessenes Architekturmodell. Farben nur Vorschau.\nQuellenhinweise bei Weitergabe und Verkauf berücksichtigen; diese Datei ist keine Rechtsberatung.\n`;}
 async function modelExport(type){const blocked=modelReason();if(blocked){explain(blocked);return;}exporting=true;labels();notify('3D-Datei wird zusammengestellt.');await nextFrame();try{const blob=type==='stl'?new Blob([R.stl(mesh)],{type:'model/stl'}):R.model3mf(mesh,settings.title);download(blob,slug()+'.'+type);download(new Blob([sources()],{type:'text/plain;charset=utf-8'}),slug()+'-quellen.txt');notify(`${type.toUpperCase()} exportiert · ${number(blob.size/1e6,1)} MB · Maße in mm. Bitte Slicer prüfen.`);}catch(e){notify(e.message,'error');}finally{exporting=false;labels();}}
 for(const [key,size] of Object.entries(R.paperSizes)){const opt=document.createElement('option');opt.value=key;opt.textContent=key==='custom'?'Eigene Maße':key+(key.startsWith('A')?` · ${size[0]} × ${size[1]} mm`:'');$('paper').append(opt);}
 for(const [key,p] of Object.entries(R.palettes)){const button=document.createElement('button');button.type='button';button.dataset.theme=key;const swatch=document.createElement('span');swatch.style.background=`linear-gradient(130deg,${p.paper} 0 46%,${p.major} 47% 53%,${p.water} 54%)`;const label=document.createElement('small');label.textContent=p.name;button.append(swatch,label);button.addEventListener('click',()=>{settings.style=key;controls();persist();preview();if(mesh)viewer?.setMesh(mesh,settings);});$('themes').append(button);}
@@ -324,5 +362,5 @@ window.addEventListener('offline',()=>notify('Du bist offline. Gespeicherte Proj
 
 if(!globalThis.RELIEF_STATIC_PREVIEW&&location.protocol!=='file:')fetch('api/status',{signal:AbortSignal.timeout(2500),headers:{Accept:'application/json'}}).then(r=>r.ok?r.json():null).then(j=>{if(j?.application==='relief-studio'&&j.server===true){R.server=true;$('logout-form').hidden=false;}}).catch(()=>{});
 // Diagnostics are local only. The interface exposes no credentials or remote administration.
-Object.defineProperty(globalThis,'ReliefStudio',{value:{get settings(){return {...settings};},get data(){return data;},get mesh(){return mesh;},get building(){return building;},view,exportPoster:()=>R.exportPoster(data,settings),get mode(){return settings.mode;},get started(){return started;},get panel(){return currentPanel;},version:'9.0.0'}});
+Object.defineProperty(globalThis,'ReliefStudio',{value:{get settings(){return {...settings};},get data(){return data;},get mesh(){return mesh;},get building(){return building;},view,exportPoster:()=>R.exportPoster(data,settings),get mode(){return settings.mode;},get started(){return started;},get panel(){return currentPanel;},version:'10.0.0'}});
 })(globalThis.RS);

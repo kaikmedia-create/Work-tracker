@@ -1,10 +1,10 @@
 {
-  "version": "9.0.0",
+  "version": "10.0.0",
   "target": "github-pages",
   "account": "kaikmedia-create",
   "repository": "kaikmedia-create/Work-tracker",
   "folder": "relief-studio",
   "base_url": "https://kaikmedia-create.github.io/Work-tracker/relief-studio/",
   "gating": "static encrypted AES-GCM bundle, not secure authentication",
-  "notes": "Relief Studio 9: automatic English-language foreign region and country; German Länder; expanded historic OSM markers, Google Maps research link, manually selected POIs; local Node/browser tests."
+  "notes": "Separated OSM base and optional historical POIs; real measured download progress with idle-aware bounded timeouts; 3-color vector branding"
 }

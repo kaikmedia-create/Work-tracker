@@ -1,3 +1,20 @@
+# Relief Studio 10 — ehrlicher Fortschritt und neues 3-Farben-Logo
+
+- **Datenphasen getrennt:** Zuerst OSM-Gebäude, Straßen und Gewässer, anschließend historische Orte als optionaler Zusatzabruf; in 3D außerdem echte Höhenkacheln. Ein Ausfall der zusätzlichen Orte blockiert die fertige Karte nicht. Es werden keine erfundenen Orte ergänzt.
+- **Echter Fortschritt:** Beim Abruf zeigt die Oberfläche empfangene Byte-Mengen, bekannte Content-Length-Prozentwerte und abgeschlossene Schritte bzw. Höhenkacheln. Solange der Server noch rechnet und keine Daten liefert, erscheint ausdrücklich eine Warteanzeige ohne künstlichen Prozentwert. Zeit seit Ladebeginn und ohne Datentransfer ist sichtbar.
+- **Zeitlimits:** maximal 58 Sekunden bis zu den ersten Antwort-Headern für die Kartenbasis, pro Datenstream höchstens 26 Sekunden ohne neue Bytes; bei aktivem Datentransfer maximal 185 Sekunden Laufzeit. Ein alternativer Overpass-Server wird bei transienten Fehlern sequenziell versucht, nicht parallel. 429-Ratenlimits werden respektiert. Eine unvollständige POI-Abfrage wird angezeigt, nicht als vollständiger Erfolg ausgegeben.
+- **Reduzierte Bildmarke:** Ein abgerundetes Symbol mit vereinfachtem Höhenzug und Reliefkurve aus drei definierten Farben (`#183C36`, `#F8FAF6`, `#83CDB8`). Das Vektor-SVG ist das Favicon und die Bildmarke im Header, passende ICO- und Apple-Touch-Icons liegen bei. `public/logo.svg` ist das horizontale Vektorlogo.
+- **Caching:** Vollständige Karten bleiben 72 Stunden im lokalen Browsercache. Fehlen historische Orte aufgrund eines Dienstfehlers, wird die unvollständige Karte nur 15 Minuten zwischengespeichert, damit die POIs anschließend erneut abrufbar sind.
+- **Tests:** `npm test` und `python tests/v10_browser.py` überprüfen empfangene Bytes, echten Prozentfortschritt, Stillstand, Fallback/POI-Ausfall sowie die Browseroberfläche. Tests verwenden bewusst synthetische Daten und kontaktieren keine öffentlichen Overpass-Server.
+
+**Grenzen:** Bei öffentlichen Overpass-Instanzen kann eine Anfrage nach 429, 504 oder Server-Timeout scheitern. Weder UI noch Software können den tatsächlichen Rechenfortschritt eines fremden Servers messen, bevor Bytes übertragen werden. Für viele echte Kundenabrufe ist ein eigener/gehosteter OSM-Datendienst erforderlich. Die PIN auf GitHub Pages ist nur eine schwache verschlüsselte Vorschau, kein sicherer serverseitiger Passwortschutz.
+
+## Nutzung
+
+Die ZIP-Datei enthält die komplette Anwendung. `Relief-Studio.html` ist ohne Installation nutzbar. Für einen eigenen passwortgeschützten lokalen Node-Server (`node >=22`) zuerst `node setup.mjs` ausführen, danach `node server.mjs`; die lokale Passwortdatei `auth.local.json` wird **nicht** im Download mitgeliefert. Testberichte in `TEST-REPORT.md`.
+
+---
+
 # Relief Studio 9 — Automatische Regionen und historische Orte
 
 **Neu in Version 9:** Im Poster wird unter dem Ortsnamen automatisch die Region bzw. das Bundesland und das Land angegeben. Deutschland: Bundesland + **DEUTSCHLAND**. Außerhalb Deutschlands: nach Möglichkeit englischer Regionsname + englischer Landesname, z. B. **FOZ — GALICIA · SPAIN**. Photon ermittelt die Region nach der Ortsauswahl; falls die Geokodierung scheitert, kann die Unterzeile manuell bearbeitet werden. Optional lässt sich die automatische Unterzeile deaktivieren. Der eingebaute Foz-Button setzt diese Angaben sofort korrekt.
