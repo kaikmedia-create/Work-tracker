@@ -25,7 +25,7 @@ function authorized(req){const match=(req.headers.cookie||'').match(/(?:^|; )rel
 function sameOrigin(req){if(!req.headers.origin)return true;try{return new URL(req.headers.origin).host===req.headers.host;}catch{return false;}}
 async function body(req){const chunks=[];let n=0;for await(const c of req){n+=c.length;if(n>2048)throw Error('Anfrage zu groß.');chunks.push(c);}return Buffer.concat(chunks).toString('utf8');}
 function cookie(value,maxAge){return `relief_session=${value}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAge}${HTTPS?'; Secure':''}`;}
-async function remote(url,options={},limit=25000000){const response=await fetch(url,{...options,signal:AbortSignal.timeout(70000),headers:{'User-Agent':'ReliefStudio/5.0 (+https://github.com/kaikmedia-create/Work-tracker)',...(options.headers||{})}});if(!response.ok)throw Error('Datendienst HTTP '+response.status);const chunks=[];let n=0;for await(const chunk of response.body){n+=chunk.length;if(n>limit)throw Error('Ausschnitt zu groß für den Datendienst.');chunks.push(chunk);}return Buffer.concat(chunks);}
+async function remote(url,options={},limit=25000000){const response=await fetch(url,{...options,signal:AbortSignal.timeout(70000),headers:{'User-Agent':'ReliefStudio/9.0 (+https://github.com/kaikmedia-create/Work-tracker)',...(options.headers||{})}});if(!response.ok)throw Error('Datendienst HTTP '+response.status);const chunks=[];let n=0;for await(const chunk of response.body){n+=chunk.length;if(n>limit)throw Error('Ausschnitt zu groß für den Datendienst.');chunks.push(chunk);}return Buffer.concat(chunks);}
 async function cached(id,fn,type){const entry=cache.get(id);if(entry&&entry.expires>Date.now())return entry.body;const buffer=await fn();if(buffer.length<8000000){while(cacheBytes+buffer.length>48000000&&cache.size){const first=cache.keys().next().value;cacheBytes-=cache.get(first).body.length;cache.delete(first);}if(cache.has(id))cacheBytes-=cache.get(id).body.length;cache.set(id,{body:buffer,expires:Date.now()+3600000,type});cacheBytes+=buffer.length;}return buffer;}
 const apiTraffic=new Map();
 function throttleAPI(req,key,limit){
@@ -51,6 +51,14 @@ const server=http.createServer(async(req,res)=>{
  if(path==='/api/search'){
   if(throttleAPI(req,'search',30)){send(res,429,JSON.stringify({error:'Zu viele Suchen. Bitte nach einer Minute erneut versuchen.'}),'application/json',{'Retry-After':'60'});return;}
   const q=(url.searchParams.get('q')||'').trim();if(q.length<2||q.length>140){send(res,400,'Ungültige Suche.','text/plain');return;}const payload=await cached('search:'+q,()=>remote('https://photon.komoot.io/api/?limit=6&lang=de&q='+encodeURIComponent(q),{},1000000));send(res,200,payload,'application/json');return;
+ }
+ if(path==='/api/reverse'){
+  if(throttleAPI(req,'reverse',25)){send(res,429,JSON.stringify({error:'Zu viele Ortsabfragen. Bitte später erneut versuchen.'}),'application/json',{'Retry-After':'60'});return;}
+  const lon=Number(url.searchParams.get('lon')),lat=Number(url.searchParams.get('lat')),lang=url.searchParams.get('lang')==='de'?'de':'en';
+  if(!Number.isFinite(lon)||!Number.isFinite(lat)||Math.abs(lon)>180||Math.abs(lat)>80){send(res,400,JSON.stringify({error:'Ungültige Koordinaten.'}),'application/json');return;}
+  const cacheKey='reverse:'+lon.toFixed(4)+':'+lat.toFixed(4)+':'+lang;
+  const payload=await cached(cacheKey,()=>remote('https://photon.komoot.io/reverse?limit=8&lon='+encodeURIComponent(lon)+'&lat='+encodeURIComponent(lat)+'&lang='+lang,{},1_000_000));
+  send(res,200,payload,'application/json');return;
  }
  if(path==='/api/map'){
   if(throttleAPI(req,'map',12)){send(res,429,JSON.stringify({error:'Zu viele Kartendaten-Anfragen. Bitte nach einer Minute erneut versuchen.'}),'application/json',{'Retry-After':'60'});return;}

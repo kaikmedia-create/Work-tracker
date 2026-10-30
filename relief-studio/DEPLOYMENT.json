@@ -1,10 +1,10 @@
 {
-  "version": "8.0.0",
+  "version": "9.0.0",
   "target": "github-pages",
   "account": "kaikmedia-create",
   "repository": "kaikmedia-create/Work-tracker",
   "folder": "relief-studio",
   "base_url": "https://kaikmedia-create.github.io/Work-tracker/relief-studio/",
   "gating": "static encrypted AES-GCM bundle, not secure authentication",
-  "notes": "Relief Studio 8: shared shoreline face graph, failsafe building check, v8 cache, viewport-safe navigation; tests 48 Node / 46 workflows / 54 alignment / 16 navigation."
+  "notes": "Relief Studio 9: automatic English-language foreign region and country; German Länder; expanded historic OSM markers, Google Maps research link, manually selected POIs; local Node/browser tests."
 }

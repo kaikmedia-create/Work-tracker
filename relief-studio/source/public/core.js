@@ -48,6 +48,37 @@ function parseHeight(t={}) {
  const tall=/tower|church|cathedral/.test(String(t.building)+' '+String(t.man_made));
  return {height:tall?20:9,heightSource:'Schätzwert'};
 }
+function regionEnglish(value){
+ const region=String(value||'').trim();
+ return ({'Galicien':'Galicia','Galiza':'Galicia','Baskenland':'Basque Country','Katalonien':'Catalonia','Andalusien':'Andalusia','Kastilien und León':'Castile and León','New York State':'New York'})[region]||region;
+}
+function subtitleForLocation(region,code,country){
+ const cc=String(code||'').trim().toUpperCase(),state=(cc==='DE'?String(region||'').trim():regionEnglish(region)).toLocaleUpperCase(cc==='DE'?'de-DE':'en-US');
+ let nation='';
+ if(cc==='DE')nation='DEUTSCHLAND';
+ else if(/^[A-Z]{2}$/.test(cc)){
+  try{nation=new Intl.DisplayNames(['en'],{type:'region'}).of(cc).toUpperCase();}catch{nation='';}
+ }
+ if(!nation){const name=String(country||'').trim();nation=( {'Spanien':'Spain','Espana':'Spain','España':'Spain','Deutschland':'Deutschland','Germany':'Deutschland','Frankreich':'France','Italien':'Italy','Vereinigte Staaten':'United States','USA':'United States'}[name]||name).toLocaleUpperCase('en-US');}
+ return [state,nation].filter(Boolean).join(' · ');
+}
+function landmarkPriority(t={}){
+ if(/castle|fort|ruins|archaeological_site|monument|citywalls/.test(t.historic||''))return 100;
+ if(t.historic)return 88;
+ if(t.heritage||t.tourism==='museum')return 85;
+ if(t.man_made==='lighthouse'||t.man_made==='tower')return 80;
+ if(t.tourism==='attraction'||t.tourism==='artwork')return 70;
+ if(t.amenity==='place_of_worship')return 65;
+ return 45;
+}
+function landmarkCategory(t={}){
+ if(t.historic||t.heritage)return 'historic';
+ if(t.tourism==='museum')return 'museum';
+ if(t.amenity==='place_of_worship')return 'worship';
+ if(t.tourism==='artwork')return 'art';
+ if(t.tourism==='viewpoint')return 'viewpoint';
+ return 'other';
+}
 function roadClass(kind) {
  if(/^(motorway|trunk|primary)(_|$)/.test(kind))return 'major';
  if(/^(secondary|tertiary)(_|$)/.test(kind))return 'secondary';
@@ -198,8 +229,13 @@ function parseOSM(raw,bounds) {
    if(t.natural==='coastline'&&c.length>1)coastlines.push(normalized(bounds,c));
    if(!used.has(e.id)){const k=kind(t);if(k==='coastline'){}else if(k&&c.length>=4&&Math.abs(c[0][0]-c.at(-1)[0])+Math.abs(c[0][1]-c.at(-1)[1])<1e-7)feature(e,[c],k);}
   }
-  if((t.historic||t.tourism==='attraction'||t.man_made==='tower'||/castle|cathedral/.test(t.building||''))&&t.name&&c.length){
-   const p=normalized(bounds,[centroid(c)])[0];if(p[0]>=0&&p[0]<=1&&p[1]>=0&&p[1]<=1)landmarks.push({id:e.type+'/'+e.id,name:String(t.name).slice(0,120),point:p});
+  const named=String(t.name||t['name:en']||t['name:de']||'').trim();
+  const isPOI=!!(t.historic||t.heritage||['attraction','museum','artwork','gallery','viewpoint'].includes(t.tourism)||t.amenity==='place_of_worship'||['tower','lighthouse'].includes(t.man_made)||/castle|cathedral|church/.test(t.building||''));
+  if(isPOI&&named){
+   if(!c.length&&e.type==='relation')c=(e.members||[]).flatMap(m=>coords(m)).slice(0,20000);
+   if(c.length){const xy=normalized(bounds,[centroid(c)])[0];
+    if(xy[0]>=0&&xy[0]<=1&&xy[1]>=0&&xy[1]<=1)landmarks.push({id:e.type+'/'+e.id,name:named.slice(0,120),point:xy,category:landmarkCategory(t),priority:landmarkPriority(t),source:'OpenStreetMap'});
+   }
   }
  }
  const cells=new Map(); for(const p of buildings.filter(b=>b.tags['building:part'])){const c=centroid(p.rings[0]),key=Math.floor(c[0]*100)+','+Math.floor(c[1]*100);if(!cells.has(key))cells.set(key,[]);cells.get(key).push(c);}
@@ -217,31 +253,37 @@ function parseOSM(raw,bounds) {
   }
  }
  water.push(...sea);
- return {buildings:kept,roads,water,parks,landmarks:landmarks.filter((p,i,a)=>a.findIndex(q=>q.name===p.name)===i).slice(0,70),warnings};
+ const unique=new Set(),named=[];
+ for(const lm of landmarks.sort((a,b)=>b.priority-a.priority)){
+  const key=lm.name.toLocaleLowerCase('und')+'|'+Math.round(lm.point[0]*1000)+'|'+Math.round(lm.point[1]*1000);
+  if(unique.has(key))continue;unique.add(key);named.push(lm);
+  if(named.length>=450){warnings.push('Sehr viele Orte gefunden: Auf 450 beschränkt. Wähle einen kleineren Kartenausschnitt für weitere Details.');break;}
+ }
+ return {buildings:kept,roads,water,parks,landmarks:named,warnings};
 }
 function sampleTerrain(terrain,u,v) {
  const {cols,rows,values}=terrain;
  const x=clamp(u,0,1)*(cols-1), y=clamp(v,0,1)*(rows-1),a=Math.floor(x),b=Math.floor(y),c=Math.min(a+1,cols-1),d=Math.min(b+1,rows-1),tx=x-a,ty=y-b;
  return (values[b*cols+a]*(1-tx)+values[b*cols+c]*tx)*(1-ty)+(values[d*cols+a]*(1-tx)+values[d*cols+c]*tx)*ty;
 }
-const defaults={layout:'bottom',font:'serif',textAlign:'center',uppercase:true,boldTitle:false,tracking:0.025,subtitleScale:1,caption:'',captionScale:1,showCoordinates:true,coordinateStyle:'decimal',customCoordinates:'',divider:true,band:22,mapFit:'contain',mapBorder:false,mapScale:1,showAttribution:true,labelStyle:'plain',labelScale:1,labelMarkers:true,labelFont:'sans',labelColor:'#233737',markerColor:'#b57842',customColors:false,paperColor:'#faf8f2',landColor:'#f3f0e8',inkColor:'#233737',waterColor:'#ccd9dc',accentColor:'#b57842',majorColor:'#35494a',buildingColor:'#c6c4b9',title:'Weinheim',subtitle:'BADEN-WÜRTTEMBERG · DEUTSCHLAND',lon:8.6808,lat:49.5480,widthKm:3.2,heightKm:3.0,modelWidth:200,base:3,terrainFactor:2,buildingFactor:1.5,landmarkFactor:1.8,landmarkWidth:1,frame:4,waterDepth:0.45,resolution:321,major:2.2,secondary:1.3,local:0.7,paths:0.32,roadRelief:0,style:'ivory',paper:'A4',paperW:210,paperH:297,orientation:'portrait',dpi:300,margin:12,headline:1,contours:true,hillshade:false,showBuildings:true,showLabels:true,format:'pdf',adaptive:true,mode:'model',landmarkOverrides:{}};
+const defaults={layout:'bottom',font:'serif',textAlign:'center',uppercase:true,boldTitle:false,tracking:0.025,subtitleScale:1,caption:'',captionScale:1,showCoordinates:true,coordinateStyle:'decimal',customCoordinates:'',divider:true,band:22,mapFit:'contain',mapBorder:false,mapScale:1,showAttribution:true,labelStyle:'plain',labelScale:1,labelMarkers:true,labelFont:'sans',labelColor:'#233737',markerColor:'#b57842',markerLimit:36,customColors:false,paperColor:'#faf8f2',landColor:'#f3f0e8',inkColor:'#233737',waterColor:'#ccd9dc',accentColor:'#b57842',majorColor:'#35494a',buildingColor:'#c6c4b9',title:'Weinheim',subtitle:'BADEN-WÜRTTEMBERG · DEUTSCHLAND',region:'Baden-Württemberg',countryCode:'DE',countryName:'Deutschland',autoSubtitle:true,lon:8.6808,lat:49.5480,widthKm:3.2,heightKm:3.0,modelWidth:200,base:3,terrainFactor:2,buildingFactor:1.5,landmarkFactor:1.8,landmarkWidth:1,frame:4,waterDepth:0.45,resolution:321,major:2.2,secondary:1.3,local:0.7,paths:0.32,roadRelief:0,style:'ivory',paper:'A4',paperW:210,paperH:297,orientation:'portrait',dpi:300,margin:12,headline:1,contours:true,hillshade:false,showBuildings:true,showLabels:true,format:'pdf',adaptive:true,mode:'model',landmarkOverrides:{}};
 const paperSizes={'10 × 15 cm':[100,150],'13 × 18 cm':[130,180],'15 × 20 cm':[150,200],'20 × 30 cm':[200,300],'30 × 40 cm':[300,400],'30 × 45 cm':[300,450],'40 × 50 cm':[400,500],'40 × 60 cm':[400,600],'50 × 70 cm':[500,700],'50 × 75 cm':[500,750],'60 × 80 cm':[600,800],'60 × 90 cm':[600,900],'70 × 100 cm':[700,1000],A5:[148,210],A4:[210,297],A3:[297,420],A2:[420,594],A1:[594,841],A0:[841,1189],'20 × 20 cm':[200,200],'30 × 30 cm':[300,300],'40 × 40 cm':[400,400],'50 × 50 cm':[500,500],custom:[210,297]};
 const palettes={ivory:{name:'Atelier',paper:'#faf8f2',land:'#f3f0e8',water:'#ccd9dc',park:'#e6e9dd',building:'#c6c4b9',major:'#35494a',secondary:'#6a7774',local:'#a4aaa2',path:'#c1c5ba',ink:'#233737',accent:'#b57842',contour:'#c8c8b5'},mono:{name:'Monochrom',paper:'#ffffff',land:'#ffffff',water:'#e5e7eb',park:'#f3f4f3',building:'#d8d8d8',major:'#171717',secondary:'#565656',local:'#969696',path:'#c8c8c8',ink:'#141414',accent:'#282828',contour:'#dddddd'},blue:{name:'Nordic',paper:'#f4f7f8',land:'#eef2f1',water:'#b8ccd6',park:'#dce6df',building:'#b4c4cd',major:'#214c65',secondary:'#668ba0',local:'#99b4c2',path:'#b9ccd3',ink:'#193d54',accent:'#b17c4e',contour:'#cbd7d8'},night:{name:'Midnight',paper:'#142c31',land:'#19363b',water:'#0d2025',park:'#29433f',building:'#3d5556',major:'#f2d7a6',secondary:'#b8bbaa',local:'#748c87',path:'#4b6867',ink:'#f6ead6',accent:'#e1ae6a',contour:'#355152'}};
 function cleanSettings(input={}) {
  const s={...defaults};
  for(const k of Object.keys(defaults))if(Object.hasOwn(input,k))s[k]=input[k];
- const limits={lon:[-180,180],lat:[-80,80],widthKm:[0.1,24],heightKm:[0.1,24],modelWidth:[30,600],base:[1,15],terrainFactor:[0,8],buildingFactor:[0,6],landmarkFactor:[1,5],landmarkWidth:[1,3],frame:[0,20],waterDepth:[0,2],resolution:[65,641],major:[0,5],secondary:[0,4],local:[0,3],paths:[0,2],roadRelief:[0,1],paperW:[50,1600],paperH:[50,2000],dpi:[72,600],margin:[0,100],mapScale:[0.55,1],headline:[0.35,2],tracking:[0,0.3],subtitleScale:[0.5,2],captionScale:[0.5,2],band:[10,34],labelScale:[0.6,2]};
+ const limits={lon:[-180,180],lat:[-80,80],widthKm:[0.1,24],heightKm:[0.1,24],modelWidth:[30,600],base:[1,15],terrainFactor:[0,8],buildingFactor:[0,6],landmarkFactor:[1,5],landmarkWidth:[1,3],frame:[0,20],waterDepth:[0,2],resolution:[65,641],major:[0,5],secondary:[0,4],local:[0,3],paths:[0,2],roadRelief:[0,1],paperW:[50,1600],paperH:[50,2000],dpi:[72,600],margin:[0,100],mapScale:[0.55,1],headline:[0.35,2],tracking:[0,0.3],subtitleScale:[0.5,2],captionScale:[0.5,2],band:[10,34],labelScale:[0.6,2],markerLimit:[0,100]};
  for(const [k,[a,b]] of Object.entries(limits))s[k]=clamp(finite(s[k],defaults[k]),a,b);
  s.resolution=Math.round(s.resolution);
- for(const k of ['contours','hillshade','showBuildings','showLabels','adaptive','uppercase','boldTitle','showCoordinates','divider','mapBorder','showAttribution','labelMarkers','customColors'])s[k]=!!s[k];
- for(const k of ['title','subtitle','caption','customCoordinates'])s[k]=String(s[k]).slice(0,100).replace(/[\x00-\x1f]/g,'');
+ for(const k of ['contours','hillshade','showBuildings','showLabels','adaptive','uppercase','boldTitle','showCoordinates','divider','mapBorder','showAttribution','labelMarkers','customColors','autoSubtitle'])s[k]=!!s[k];
+ for(const k of ['title','subtitle','caption','customCoordinates','region','countryCode','countryName'])s[k]=String(s[k]).slice(0,100).replace(/[\x00-\x1f]/g,'');
  for(const [key,choices] of Object.entries({mode:['poster','model'],layout:['bottom','top','map'],font:['serif','sans','mono'],labelFont:['serif','sans','mono'],textAlign:['left','center','right'],mapFit:['contain','cover'],labelStyle:['plain','halo'],coordinateStyle:['decimal','dms','custom']}))if(!choices.includes(s[key]))s[key]=defaults[key];
  for(const key of ['paperColor','landColor','inkColor','waterColor','accentColor','majorColor','buildingColor','labelColor','markerColor'])if(!/^#[0-9a-f]{6}$/i.test(s[key]))s[key]=defaults[key];
  if(!palettes[s.style])s.style='ivory';
  if(!['png','jpeg','pdf'].includes(s.format))s.format='pdf';
  if(!paperSizes[s.paper])s.paper='custom';
  if(!s.landmarkOverrides||typeof s.landmarkOverrides!=='object'||Array.isArray(s.landmarkOverrides))s.landmarkOverrides={};
- s.landmarkOverrides=Object.fromEntries(Object.entries(s.landmarkOverrides).slice(0,2000).map(([k,v])=>[k,{...(typeof v?.enabled==='boolean'?{enabled:v.enabled}:{}),...(typeof v?.label==='boolean'?{label:v.label}:{}),...(Number.isFinite(v?.height)?{height:clamp(v.height,1,1000)}:{}),...(Number.isFinite(v?.factor)?{factor:clamp(v.factor,1,5)}:{})}]));
+ s.landmarkOverrides=Object.fromEntries(Object.entries(s.landmarkOverrides).slice(0,2000).map(([k,v])=>[k,{...(typeof v?.enabled==='boolean'?{enabled:v.enabled}:{}),...(typeof v?.label==='boolean'?{label:v.label}:{}),...(typeof v?.featured==='boolean'?{featured:v.featured}:{}),...(Number.isFinite(v?.height)?{height:clamp(v.height,1,1000)}:{}),...(Number.isFinite(v?.factor)?{factor:clamp(v.factor,1,5)}:{})}]));
  return s;
 }
 function validateProject(p) {
@@ -342,6 +384,6 @@ function model3mf(mesh,name='City') {
  const xml=`<?xml version="1.0" encoding="UTF-8"?><model unit="millimeter" xml:lang="de-DE" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"><metadata name="Title">${escape(name)}</metadata><metadata name="Description">Map data © OpenStreetMap contributors, ODbL. Terrain: Mapzen / AWS Terrain Tiles. Simplified raster relief, no surveyed architectural model.</metadata><resources><object id="1" type="model"><mesh><vertices>${verts.join('')}</vertices><triangles>${triangles.join('')}</triangles></mesh></object></resources><build><item objectid="1"/></build></model>`;
  return zip({'[Content_Types].xml':'<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/></Types>','_rels/.rels':'<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Target="/3D/3dmodel.model" Id="rel0" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/></Relationships>','3D/3dmodel.model':xml});
 }
-Object.assign(R,{clamp,finite,project,unproject,boundsFor,boundsInfo,validateBounds,normalized,inside,insideRing,ringBox,centroid,parseHeight,roadClass,parseOSM,seaPolygonsFromCoastlines,sampleTerrain,defaults,paperSizes,palettes,cleanSettings,validateProject,simplify,contours,buildMesh,stl,crc32,zip,model3mf});
+Object.assign(R,{clamp,finite,project,unproject,boundsFor,boundsInfo,validateBounds,normalized,inside,insideRing,ringBox,centroid,parseHeight,roadClass,subtitleForLocation,landmarkPriority,landmarkCategory,parseOSM,seaPolygonsFromCoastlines,sampleTerrain,defaults,paperSizes,palettes,cleanSettings,validateProject,simplify,contours,buildMesh,stl,crc32,zip,model3mf});
 if(typeof module!=='undefined')module.exports=R;
 })(typeof self!=='undefined'?self:globalThis);

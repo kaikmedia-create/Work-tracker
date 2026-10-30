@@ -11,8 +11,8 @@ async function request(url,options={},timeout=TIMEOUT){
  finally{clearTimeout(timer);source?.removeEventListener('abort',abort);}
 }
 const OVERPASS=['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter'];
-function osmQuery(b){const box=[b[1],b[0],b[3],b[2]].map(x=>x.toFixed(6)).join(',');return `[out:json][timeout:60][bbox:${box}];(way[building][building!="no"];way["building:part"];way[highway];way[waterway];way[natural=water];way[natural=coastline];way[water];way[landuse~"^(forest|grass)$"];way[natural=wood];way[leisure=park];relation[type=multipolygon][building];relation[type=multipolygon][natural=water];relation[type=multipolygon][water];relation[type=multipolygon][waterway=riverbank];nwr[historic~"^(castle|ruins|monument)$"];nwr[man_made=tower];nwr[tourism=attraction];);out geom;`;}
-const CACHE_DB='relief-studio-v8';
+function osmQuery(b){const box=[b[1],b[0],b[3],b[2]].map(x=>x.toFixed(6)).join(',');return `[out:json][timeout:60][bbox:${box}];(way[building][building!="no"];way["building:part"];way[highway];way[waterway];way[natural=water];way[natural=coastline];way[water];way[landuse~"^(forest|grass)$"];way[natural=wood];way[leisure=park];relation[type=multipolygon][building];relation[type=multipolygon][natural=water];relation[type=multipolygon][water];relation[type=multipolygon][waterway=riverbank];nwr[historic][name];nwr[heritage][name];nwr[man_made~"^(tower|lighthouse)$"][name];nwr[tourism~"^(museum|artwork|attraction|gallery|viewpoint)$"][name];nwr[amenity=place_of_worship][name];);out geom;`;}
+const CACHE_DB='relief-studio-v9';
 let databasePromise;
 function openCache(){
  if(databasePromise)return databasePromise;
@@ -36,7 +36,17 @@ async function searchPlace(q,signal){
  const query=String(q).trim().slice(0,140);if(query.length<2)throw Error('Bitte mindestens zwei Zeichen eingeben.');
  const url=R.server?`api/search?q=${encodeURIComponent(query)}`:`https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=6&lang=de`;
  const json=await readJSONLimited(await request(url,{signal},20000),1_000_000,20000);
- return (json.features||[]).map(f=>({lon:f.geometry.coordinates[0],lat:f.geometry.coordinates[1],name:f.properties.name||f.properties.city||query,label:[f.properties.name,f.properties.city,f.properties.state,f.properties.country].filter((x,i,a)=>x&&a.indexOf(x)===i).join(' · '),country:f.properties.country||''}));
+ return (json.features||[]).map(f=>({lon:f.geometry.coordinates[0],lat:f.geometry.coordinates[1],name:f.properties.name||f.properties.city||query,label:[f.properties.name,f.properties.city,f.properties.state,f.properties.country].filter((x,i,a)=>x&&a.indexOf(x)===i).join(' · '),region:f.properties.state||'',country:f.properties.country||'',countryCode:String(f.properties.countrycode||'').toUpperCase()}));
+}
+async function reverseRegion(lon,lat,code='',signal){
+ if(!Number.isFinite(lon)||!Number.isFinite(lat))throw Error('Koordinaten sind ungültig.');
+ const lang=String(code).toUpperCase()==='DE'?'de':'en';
+ const url=R.server?`api/reverse?lon=${encodeURIComponent(lon)}&lat=${encodeURIComponent(lat)}&lang=${lang}`:`https://photon.komoot.io/reverse?lon=${encodeURIComponent(lon)}&lat=${encodeURIComponent(lat)}&limit=8&lang=${lang}`;
+ const json=await readJSONLimited(await request(url,{signal},15000),1000000,15000);
+ const features=(json.features||[]).filter(f=>f?.properties?.state||f?.properties?.countrycode);
+ const first=features.find(f=>f.properties.state&&f.properties.countrycode)||features[0];
+ if(!first)throw Error('Der Ort konnte keiner Region zugeordnet werden. Bitte Region manuell eintragen.');
+ return {region:first.properties.state||'',countryCode:String(first.properties.countrycode||code||'').toUpperCase(),country:first.properties.country||''};
 }
 async function getOSM(b,signal,mode='model'){
  if(R.server)return readJSONLimited(await request(`api/map?bbox=${b.join(',')}&mode=${mode}`,{signal}),24_000_000);
@@ -67,7 +77,7 @@ async function terrainData(bounds,signal,onProgress){
  return {cols,rows,values,zoom:z,spacing:Math.max(info.w/(cols-1),info.h/(rows-1)),source:'Mapzen / AWS Terrain Tiles (Terrarium)',attribution:'https://github.com/tilezen/joerd/blob/master/docs/attribution.md',tileCount:jobs.length};
 }
 async function loadMap(bounds,{signal,onProgress,refresh=false,terrainRequired=true,mode='model'}={}){
- R.validateBounds(bounds,mode);const key='map:v8:'+bounds.map(x=>x.toFixed(5)).join(',')+(terrainRequired?'':':poster-2d');
+ R.validateBounds(bounds,mode);const key='map:v9:'+bounds.map(x=>x.toFixed(5)).join(',')+(terrainRequired?'':':poster-2d');
  if(!refresh){const cached=await cacheGet(key);if(cached){onProgress?.('Gespeicherte Originaldaten werden geladen',0.85);return cached;}}
  onProgress?.(terrainRequired?'OpenStreetMap und echte Geländehöhen werden geladen':'Straßen, Gebäude und Gewässer für dein Poster werden geladen',0.08);
  const [raw,terrain]=await Promise.all([getOSM(bounds,signal,mode).catch(e=>{if(e.name==='AbortError')throw e;throw Error('OpenStreetMap: '+e.message);}),terrainRequired?terrainData(bounds,signal,onProgress).catch(e=>{if(e.name==='AbortError')throw e;throw Error('Geländedaten: '+e.message);}):Promise.resolve({cols:2,rows:2,values:[0,0,0,0],available:false,source:'Nicht geladen – reines 2D-Poster'})]);
@@ -77,5 +87,5 @@ async function loadMap(bounds,{signal,onProgress,refresh=false,terrainRequired=t
  if(R.boundsInfo(bounds).w*R.boundsInfo(bounds).h>80e6)features.warnings.push('Sehr großer Ausschnitt: Gebäudedetails sind begrenzt und öffentliche Overpass-Dienste können den Abruf ablehnen. Für Produktionsbetrieb eigenen/kommerziellen OSM-Datendienst verwenden.');
  await cacheSet(key,data);return data;
 }
-Object.assign(R,{request,osmQuery,searchPlace,loadMap,tileXY,readJSONLimited,server:false});
+Object.assign(R,{request,osmQuery,searchPlace,reverseRegion,loadMap,tileXY,readJSONLimited,server:false});
 })(globalThis.RS);

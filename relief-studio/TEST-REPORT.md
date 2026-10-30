@@ -1,3 +1,14 @@
+# Relief Studio 9 — Prüfergebnisse (30.10.2026)
+
+**Tatsächlich lokal ausgeführt:**
+
+- 54/54 Node-Tests: unveränderte Geometry-, Coastline-, Schema- und Print-Tests plus 6 v9-Tests (Regionen, neue OSM-Historic-Tags, POI-Klassen, mehr Marker, Prioritäten, Foz/Photon).
+- 18/18 gezielte Chromium-Browsertests mit ausdrücklich synthetischen historischen POIs: Foz-Preset, Regionalbeschriftung, Suche, Kategorie, Max-Marker, Priorität, Gruppenwahl, manuelle Marker, Umschalten der Automatik, 60×80-cm-Vektor-PDF mit echten Millimetern und unter 8 MB.
+- 46/46 ältere Browser-Regressionstests: Poster, 3D, Import/Export, Fehler, mobile Größen.
+- 16/16 Desktop-Navigationstests (acht Auflösungen, jeweils beide Modi), keine abgeschnittenen Buttons.
+
+**Nicht behauptet:** Die POI-Testdaten sind synthetisch. Die Menge und Qualität historischer Orte aus Foz/Google Maps wurde nicht live als vollständig verifiziert. Keine automatischen Google-Places-Daten; keine neuen echten OSM-Marker erfunden. Reale OSM-/Photon-Verfügbarkeit ist abhängig von externen Diensten. Keine physische Testdruckabnahme. Die statische 4-stellige PIN ist kein sicherer Schutz für vertrauliche Kundendaten.
+
 # Relief Studio 8 — Fehleranalyse, Referenz & Tests · 30.10.2026
 
 ## Vom Nutzer bereitgestellte Foz-Ausgaben

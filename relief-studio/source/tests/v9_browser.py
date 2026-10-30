@@ -1,0 +1,73 @@
+"""Offline Foz browser regression. Never pretends synthetic POIs are real-world results."""
+import asyncio, json, os, pathlib
+from playwright.async_api import async_playwright
+ROOT=pathlib.Path(__file__).resolve().parents[1]
+OUT=ROOT/'reports/v9'; OUT.mkdir(parents=True,exist_ok=True)
+FIX=json.loads((ROOT/'tests/fixture-poster.json').read_text())
+checks=[];errors=[]
+def check(name,cond):
+ assert cond,name
+ checks.append(name);print('PASS',name,flush=True)
+async def main():
+ async with async_playwright() as p:
+  browser=await p.chromium.launch(executable_path='/usr/bin/chromium',headless=True,args=['--no-sandbox','--disable-dev-shm-usage','--use-gl=swiftshader'])
+  page=await browser.new_page(viewport={'width':1600,'height':960},accept_downloads=True)
+  page.on('pageerror',lambda e:errors.append(str(e)))
+  await page.route('**/*',lambda route:route.abort())
+  await page.set_content((ROOT/'Relief-Studio.html').read_text(),wait_until='load')
+  await page.wait_for_function('!!window.ReliefStudio')
+  await page.evaluate("()=>{RS.reverseRegion=async()=>({region:'Galicia',countryCode:'ES',country:'Spain'});}")
+  check('Welcome mode split',await page.locator('#choose-poster').is_visible() and await page.locator('#choose-model').is_visible())
+  await page.locator('#choose-poster').click()
+  await page.locator('[data-city=foz]').click()
+  check('Foz preset is Galicia Spain',await page.evaluate("ReliefStudio.settings.subtitle==='GALICIA · SPAIN'") and await page.evaluate("ReliefStudio.settings.countryCode==='ES'"))
+  await page.evaluate('f=>{RS.loadMap=async(bounds)=>{const d=structuredClone(f.data);d.bounds=bounds;d.buildings=d.buildings.slice(0,20);d.roads=d.roads.slice(0,15);d.parks=[];d.water=[];d.terrain={cols:2,rows:2,values:[0,0,0,0],available:false};d.landmarks=Array.from({length:45},(_,i)=>({id:"historic/"+i,name:"Historisches Objekt "+i,category:"historic",source:"OpenStreetMap",priority:90,point:[0.08+i%9*.1,0.1+Math.floor(i/9)*.16]}));return d;}}',FIX)
+  await page.locator('#load-data').click()
+  await page.wait_for_function('ReliefStudio.data && ReliefStudio.panel==="style"',timeout=30000)
+  check('Synthetic historic marker count',await page.locator('#marker-count').inner_text()!='' and await page.locator('.marker-row').count()==45)
+  check('Marker font and text color survive',await page.locator('[data-setting=markerLimit]').input_value()=='36')
+  await page.locator('[data-setting=markerLimit]').fill('45')
+  await page.locator('[data-setting=markerLimit]').dispatch_event('change')
+  check('Marker count slider updates',await page.evaluate('ReliefStudio.settings.markerLimit===45'))
+  await page.locator('#marker-search').fill('Objekt 40')
+  check('Marker search filters list',await page.locator('.marker-row').count()==1)
+  await page.locator('#marker-search').fill('')
+  await page.locator('.marker-row .marker-star').first.click()
+  check('Featured priority persists',await page.evaluate("Object.values(ReliefStudio.settings.landmarkOverrides).some(x=>x.featured===true)"))
+  await page.locator('#marker-hide-all').click()
+  check('Hide historical marker batch',await page.evaluate("Object.keys(ReliefStudio.settings.landmarkOverrides).length===45 && Object.values(ReliefStudio.settings.landmarkOverrides).every(x=>x.label===false)"))
+  await page.locator('#marker-show-all').click()
+  check('Show historical marker batch',await page.evaluate('Object.values(ReliefStudio.settings.landmarkOverrides).every(x=>x.label===true)'))
+  await page.locator('#marker-name').fill('Capela Test');await page.locator('#marker-lat').fill('43.566');await page.locator('#marker-lon').fill('-7.255')
+  await page.locator('#marker-add').click()
+  check('Manually named marker added',await page.evaluate("ReliefStudio.data.landmarks.some(x=>x.name==='Capela Test'&&x.source==='manual')"))
+  await page.locator('#marker-filter').select_option('custom')
+  check('Manual marker filter works',await page.locator('.marker-row').count()==1)
+  await page.locator('#marker-filter').select_option('all')
+  # Source data is synthetic. Poster should use the automatically localized subtitle.
+  await page.locator('[data-step="2"]').click()
+  check('Text and layout shows English subtitle',await page.locator('[data-setting=subtitle]').input_value()=='GALICIA · SPAIN')
+  await page.locator('[data-setting=subtitle]').fill('PERSONAL MEMORIES · SPAIN')
+  check('Manual subtitle disables automatic overwrite',await page.evaluate('!ReliefStudio.settings.autoSubtitle'))
+  await page.locator('[data-setting=autoSubtitle]').check()
+  await page.wait_for_function("ReliefStudio.settings.subtitle==='GALICIA · SPAIN'")
+  check('Automatic region can be switched back on',await page.evaluate('ReliefStudio.settings.autoSubtitle'))
+  scene=await page.evaluate("()=>RS.posterScene(ReliefStudio.data,ReliefStudio.settings)")
+  check('Localized text is in actual export scene',any(x.get('value')=='GALICIA · SPAIN' for x in scene['ops']))
+  # Validate PDF export in actual browser using synthetic data
+  print('Selecting print size in Text & Layout',flush=True);await page.locator('#paper').select_option('60 × 80 cm')
+  print('Entering export step',flush=True);await page.locator('[data-step="3"]').click()
+  await page.locator('[data-format=pdf]').click()
+  print('Starting PDF export',flush=True);await page.locator('#export-poster').click()
+  print('Waiting for export dialog',flush=True);await page.wait_for_selector('#export-dialog[open]',timeout=20000)
+  async with page.expect_download() as d: await page.locator('#download-ready').click()
+  download=await d.value;path=OUT/'foz-synthetic-600x800mm.pdf';await download.save_as(str(path))
+  check('PDF 60x80 below 8MB',0<path.stat().st_size<8_000_000)
+  import fitz
+  pdf=fitz.open(str(path));rect=pdf[0].rect
+  check('PDF physical dimensions 600x800mm',abs(rect.width*25.4/72-600)<.2 and abs(rect.height*25.4/72-800)<.2)
+  await page.screenshot(path=str(OUT/'foz-marker-editor.png'))
+  check('No uncaught JS page errors',not errors)
+  (OUT/'browser-checks.json').write_text(json.dumps({'passed':len(checks),'checks':checks,'errors':errors},ensure_ascii=False,indent=2))
+  await browser.close()
+asyncio.run(main())

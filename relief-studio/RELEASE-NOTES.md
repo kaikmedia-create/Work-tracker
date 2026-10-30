@@ -1,3 +1,14 @@
+# Relief Studio 9 — Foz/Region/Historische Marker
+
+- Foz: **GALICIA · SPAIN**, DE: jeweiliges Bundesland · DEUTSCHLAND; länderabhängige Sprache.
+- Region aus Photon-Geocoding nach Ortswahl, wiederholbar und editierbar.
+- OSM-POIs: breite historische/heritage/Museum/Kirche/Leuchtturm-Abfrage.
+- Markerliste: filtern, suchen, markieren, Priorität setzen; max. 100 Beschriftungen einstellbar.
+- Eigene Marker mit validierten Koordinaten und Quelle `manual`, dauerhaft in .relief.json.
+- Google Maps öffnet nur als externe Recherche; keine nicht lizenzierte Google-Places-Übernahme.
+- Bestehende 3D-/Poster-Workflows, PDF/PNG/JPEG/STL/3MF und Foz-Küstenfix erhalten.
+- Version-9-Karten-Cache, damit neue POIs tatsächlich nachgeladen werden.
+
 # Release 8 — 30.10.2026
 
 - Kritischen Küstenfehler bei kleinen Ausschnitten behoben: gemeinsame planar-topologische Verarbeitung statt einzelner Eckschlüsse; OSM-Regel Land links / Meer rechts.

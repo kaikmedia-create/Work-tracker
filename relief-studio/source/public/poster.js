@@ -61,7 +61,7 @@ function posterScene(data,settings,options={}){
   for(let i=0;i<roads.length;i++){if(step>1&&i%step!==0){previewOmitted++;continue;}path(roads[i].points.map(xy),p[kind],widths[kind]*widthScale);}
  }
  if(s.showLabels){
-  const labels=data.landmarks.filter(item=>settings.landmarkOverrides?.[item.id]?.label!==false).slice().sort((a,b)=>Number(/Wachenburg|Windeck|Schloss|Castle|Empire|Chrysler/i.test(b.name))-Number(/Wachenburg|Windeck|Schloss|Castle|Empire|Chrysler/i.test(a.name))).slice(0,16),used=[];
+  const labels=data.landmarks.filter(item=>s.landmarkOverrides?.[item.id]?.label!==false).slice().sort((a,b)=>Number(!!s.landmarkOverrides?.[b.id]?.featured)-Number(!!s.landmarkOverrides?.[a.id]?.featured)||(b.priority||0)-(a.priority||0)||String(a.name).localeCompare(String(b.name),'de')).slice(0,s.markerLimit),used=[];
   for(const item of labels){const [x,y]=xy(item.point),size=Math.max(1.4,W*.010)*s.labelScale,value=String(item.name).slice(0,40),tw=textWidth(value,size,s.labelFont),l=x-tw/2,r=x+tw/2,yy=y+size*1.6;
    if(l<clip.x+1||r>clip.x+clip.w-1||yy>clip.y+clip.h-2||y<clip.y+1||used.some(b=>!(r<b[0]||l>b[2]||yy<b[1]||yy-size>b[3])))continue;
    if(s.labelMarkers)ops.push({type:'circle',x,y,r:Math.max(.35,W*.0024),fill:s.markerColor});

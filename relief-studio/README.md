@@ -1,3 +1,15 @@
+# Relief Studio 9 — Automatische Regionen und historische Orte
+
+**Neu in Version 9:** Im Poster wird unter dem Ortsnamen automatisch die Region bzw. das Bundesland und das Land angegeben. Deutschland: Bundesland + **DEUTSCHLAND**. Außerhalb Deutschlands: nach Möglichkeit englischer Regionsname + englischer Landesname, z. B. **FOZ — GALICIA · SPAIN**. Photon ermittelt die Region nach der Ortsauswahl; falls die Geokodierung scheitert, kann die Unterzeile manuell bearbeitet werden. Optional lässt sich die automatische Unterzeile deaktivieren. Der eingebaute Foz-Button setzt diese Angaben sofort korrekt.
+
+**Historische POIs:** Statt ausschließlich Burgen, Ruinen und Monumente werden nun sämtliche benannten OSM-Objekte mit `historic=*`, `heritage=*` sowie Museums-/Kunst-/Aussichts-, Kapellen-/Kirchen- und Leuchtturm-Kategorien abgefragt. Nach dem Laden sind die Orte durchsuchbar und nach Kategorie filterbar; einzelne Marker lassen sich anzeigen, ausblenden und priorisieren. Das Standardlimit sichtbarer Beschriftungen ist von 16 auf 36 gestiegen, frei einstellbar bis 100. Überlappende Namen werden weiterhin unterdrückt, damit das Poster lesbar bleibt. Fehlende OSM-Orte werden nicht erfunden.
+
+**Google Maps:** Ein Button öffnet für den gewählten Ort eine Recherche nach historischen Sehenswürdigkeiten in Google Maps. Automatisches Übernehmen/Scraping von Google-Places-Daten ist **nicht** eingebaut: Google Places verlangt eine geeignete API, Abrechnung und Einhaltung von Attributions- und Nutzungsvorgaben. Stattdessen können eigene Marker mit Name, Breiten- und Längengrad direkt im Projekt ergänzt werden. Das ist kein Datenabruf von Google.
+
+**Daten und Grenzen:** Historische Kategorien hängen von tatsächlich vorhandenen OSM-Tags ab; die Abdeckung ist nicht vollständig. Die öffentliche Photon-Suche und Overpass können zeitweise ausfallen. Die neue OSM-Abfrage ist breiter und kann bei sehr großen Ausschnitten mehr Daten liefern. Die App begrenzt Abfragegrößen und zeigt Fehler. Die Google-Recherche öffnet ein externes Fenster. Weitere Hinweise und lokal geprüfte Tests stehen in `TEST-REPORT.md`. Die PIN `2808` der GitHub-Pages-Ansicht ist **keine** sichere serverseitige Authentifizierung.
+
+---
+
 # Relief Studio 8 — Küstenkorrektur & Bedienleiste
 
 **Neuerungen Version 8:** Das Meer wird aus gemeinsam verbundenen, gerichteten OSM-Küstenlinien (`natural=coastline`) polygonisiert. Die Landseite wird nicht länger durch unabhängig geschlossene Küstenabschnitte überschwemmt. Wenn das errechnete Meer viele OSM-Gebäude überdeckt, wird das unsichere Wasserpolygon nicht gezeichnet und ein Warnhinweis angezeigt. Unvollständige Küstenlinien werden ebenfalls nicht als Meer geraten.

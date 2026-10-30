@@ -78,3 +78,11 @@
   .sidebar-bottom {padding-bottom:max(18px,env(safe-area-inset-bottom))!important;}
   .step-navigation button {white-space:normal;line-height:1.35;min-height:44px;}
 }
+
+/* v9 -- searchable historical places without clipped controls */
+.marker-row{display:flex;align-items:center;justify-content:space-between;gap:7px;padding:8px 0;border-bottom:1px solid var(--line)}
+.marker-row>.check{flex:1;min-width:0;overflow-wrap:anywhere;margin:0}
+.marker-tools{display:flex;align-items:center;gap:6px;flex:none}
+.marker-tools small{font-size:8px;color:var(--muted)}
+.marker-star{border:1px solid #d8dfcf;color:#b18446;background:var(--surface);border-radius:7px;padding:4px 7px;font-size:16px;min-width:29px}
+#marker-count{font-size:10px;line-height:1.5}
