@@ -12,7 +12,7 @@ async function request(url,options={},timeout=TIMEOUT){
 }
 const OVERPASS=['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter'];
 function osmQuery(b){const box=[b[1],b[0],b[3],b[2]].map(x=>x.toFixed(6)).join(',');return `[out:json][timeout:60][bbox:${box}];(way[building][building!="no"];way["building:part"];way[highway];way[waterway];way[natural=water];way[natural=coastline];way[water];way[landuse~"^(forest|grass)$"];way[natural=wood];way[leisure=park];relation[type=multipolygon][building];relation[type=multipolygon][natural=water];relation[type=multipolygon][water];relation[type=multipolygon][waterway=riverbank];nwr[historic~"^(castle|ruins|monument)$"];nwr[man_made=tower];nwr[tourism=attraction];);out geom;`;}
-const CACHE_DB='relief-studio-v5';
+const CACHE_DB='relief-studio-v8';
 let databasePromise;
 function openCache(){
  if(databasePromise)return databasePromise;
@@ -67,12 +67,12 @@ async function terrainData(bounds,signal,onProgress){
  return {cols,rows,values,zoom:z,spacing:Math.max(info.w/(cols-1),info.h/(rows-1)),source:'Mapzen / AWS Terrain Tiles (Terrarium)',attribution:'https://github.com/tilezen/joerd/blob/master/docs/attribution.md',tileCount:jobs.length};
 }
 async function loadMap(bounds,{signal,onProgress,refresh=false,terrainRequired=true,mode='model'}={}){
- R.validateBounds(bounds,mode);const key='map:v5:'+bounds.map(x=>x.toFixed(5)).join(',')+(terrainRequired?'':':poster-2d');
+ R.validateBounds(bounds,mode);const key='map:v8:'+bounds.map(x=>x.toFixed(5)).join(',')+(terrainRequired?'':':poster-2d');
  if(!refresh){const cached=await cacheGet(key);if(cached){onProgress?.('Gespeicherte Originaldaten werden geladen',0.85);return cached;}}
  onProgress?.(terrainRequired?'OpenStreetMap und echte Geländehöhen werden geladen':'Straßen, Gebäude und Gewässer für dein Poster werden geladen',0.08);
  const [raw,terrain]=await Promise.all([getOSM(bounds,signal,mode).catch(e=>{if(e.name==='AbortError')throw e;throw Error('OpenStreetMap: '+e.message);}),terrainRequired?terrainData(bounds,signal,onProgress).catch(e=>{if(e.name==='AbortError')throw e;throw Error('Geländedaten: '+e.message);}):Promise.resolve({cols:2,rows:2,values:[0,0,0,0],available:false,source:'Nicht geladen – reines 2D-Poster'})]);
  if(signal?.aborted)throw abortError();onProgress?.('Gebäude, Straßen und Wahrzeichen aufbereiten',0.76);
- const features=R.parseOSM(raw,bounds),data={version:2,bounds,terrain,...features,capturedAt:new Date().toISOString(),osmTimestamp:raw.osm3s?.timestamp_osm_base||null,source:'OpenStreetMap contributors · ODbL 1.0',realData:true};
+ const features=R.parseOSM(raw,bounds),data={version:2,coastlineVersion:8,bounds,terrain,...features,capturedAt:new Date().toISOString(),osmTimestamp:raw.osm3s?.timestamp_osm_base||null,source:'OpenStreetMap contributors · ODbL 1.0',realData:true};
  if(!features.buildings.length)features.warnings.push('Keine Gebäude in diesem Ausschnitt vorhanden.');
  if(R.boundsInfo(bounds).w*R.boundsInfo(bounds).h>80e6)features.warnings.push('Sehr großer Ausschnitt: Gebäudedetails sind begrenzt und öffentliche Overpass-Dienste können den Abruf ablehnen. Für Produktionsbetrieb eigenen/kommerziellen OSM-Datendienst verwenden.');
  await cacheSet(key,data);return data;

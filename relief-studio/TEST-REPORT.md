@@ -1,3 +1,25 @@
+# Relief Studio 8 — Fehleranalyse, Referenz & Tests · 30.10.2026
+
+## Vom Nutzer bereitgestellte Foz-Ausgaben
+
+Die gelieferten PDF-Dateien zeigen bei enger Auswahl Stadtgrundrisse unter fast vollständig wasserblauem Hintergrund. Die größere Ausgabe zeigt eine plausible Trennung von Foz und der Ría. Bei einer RGB-Auswertung des Kartenbereichs (grobe farbbasierte Näherung, kein vermessener Wasserflächenanteil) waren ca. 92,6 % beim kleineren Ausschnitt und 29,5 % beim größeren hellblau.
+
+## Technischer Fehler
+
+Die bisherige Hilfsfunktion hat jede offene `natural=coastline`-Linie eigenständig mit dem Kartenrand zu einem Polygon geschlossen. Bei mehreren Linien konnte das zu großflächigen Überlappungen und zur Füllung von Land als Meer führen. Die neue Funktion verbindet die OSM-Teilstücke und konstruiert aus Küsten- und Rahmenkanten **disjunkte Flächen**, die gemäß OSM-Richtungsregel klassifiziert werden: Land links, Meer rechts. Bei unvollständiger Topologie wird der ungeklärte Bereich nicht künstlich gefüllt. Meerespolygone, die mehr als 12 % einer Gebäude-Stichprobe überdecken (bei mindestens zwölf Gebäuden), werden unterdrückt und es erscheint eine Warnmeldung.
+
+## Reproduzierbare Tests
+
+- Node: 48 Tests, 0 Fehler. Darunter 8 neue Küstenprüfungen (kleiner/größerer Foz-Ausschnitt mit demselben synthetischen Küsten-Datensatz; OSM-Richtung; segmentübergreifender Küstenverlauf; Insel-Landflächen; unvollständige Linie; Gebäudeschutz; PDF-Pfad).
+- Browser: 46 Workflows/Export-/Moduswechselprüfungen bestanden.
+- Sichtbarkeit der Navigationsbuttons: 16 Desktopprüfungen in 8 Auflösungen, Poster- und 3D-Modus. Beide Buttons vollständig im Fenster, mindestens 44 Pixel hoch, anklickbar, keine überlappenden Bedienfelder oder Dokument-Scrollbars.
+- Posterformat / Seitenverhältnis: 54 Prüfungen über 8 Papierformate und 6 Viewports einschließlich Mobilansicht und Querformat. Kartenbild und Posterhintergrund bleiben deckungsgleich.
+- PIN: Node-Test verifiziert richtige/falsche PIN und die vollständig entschlüsselte Version 8; Live-GitHub-Pages-Test nach Veröffentlichung getrennt dokumentieren.
+
+## Nicht als bestätigt ausgeben
+
+Es konnte kein vollständiger Live-Overpass-Datensatz für Foz aus der Containerumgebung abgerufen werden. Die neuen Tests nutzen **synthetische OSM-Wege und 160 Gebäude** an Foz-Koordinaten; die georeferenzierte Realität von Foz muss auf der live veröffentlichten Seite noch einmal beurteilt werden. Ein physischer Probedruck oder Belastungstest öffentlicher Overpass-Dienste wurde nicht ausgeführt. Der GitHub-Pages-PIN ist kein sicherer serverseitiger Login.
+
 ## Relief Studio 7 · Regressionsprüfung der Poster-Vorschau (25.10.2026)
 
 **Fehler reproduziert:** Vor dem Fix verwendete der Poster-Papiercontainer weiterhin das A4-Seitenverhältnis 210:297. Bei 60 × 80 cm war er z. B. im 1536×960-Viewport 421,77×596,48 px groß, das Canvas aber 428,25×571 px. Daraus entstanden rechts und unten überstehende weiße Flächen.

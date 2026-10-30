@@ -1,3 +1,13 @@
+# Relief Studio 8 — Küstenkorrektur & Bedienleiste
+
+**Neuerungen Version 8:** Das Meer wird aus gemeinsam verbundenen, gerichteten OSM-Küstenlinien (`natural=coastline`) polygonisiert. Die Landseite wird nicht länger durch unabhängig geschlossene Küstenabschnitte überschwemmt. Wenn das errechnete Meer viele OSM-Gebäude überdeckt, wird das unsichere Wasserpolygon nicht gezeichnet und ein Warnhinweis angezeigt. Unvollständige Küstenlinien werden ebenfalls nicht als Meer geraten.
+
+**Wichtig für Foz/Rostock:** Nach dem Update die Originalkarte **neu laden**. Version 8 nutzt einen separaten Datencache; frühere `.relief.json`-Projekte mit alten Meerespolygonen müssen neu geladen werden. Im importierten Altprojekt wird der Export der veralteten Küstenfläche blockiert und die Begründung angezeigt.
+
+**Bedienleiste:** Auf Desktop ist die Höhe ein echtes Flex-Verhältnis der sichtbaren Fensterhöhe; die Einstellungen scrollen im Mittelteil, die Aktionen „Zurück“ / „Weiter“ bleiben vollständig im Fenster. Mobil darf die Seite vertikal scrollen.
+
+**Prüfungen:** `npm test`, `python tests/v8_layout.py`, `python tests/preview_alignment.py`, `python tests/workflow_browser.py`. Die Tests verwenden explizit synthetische Küsten-/Gebäudegeometrie, nicht vermessene Foz-Daten. Für einen kommerziellen Start muss eine reale Foz-Karte und ein physischer Probedruck geprüft werden. Weitere Angaben und genaue Ergebnisse in `TEST-REPORT.md`.
+
 > **Relief Studio 7:** Poster-Vorschau auf allen Papierformaten korrigiert. Papierhintergrund und Canvas sind nun millimetergenau im selben Seitenverhältnis (auch 60 × 80 cm); kein weißer Überstand. Regressionsprüfung: `python tests/preview_alignment.py`. Weitere Details siehe TEST-REPORT.md.
 
 # Relief Studio 6

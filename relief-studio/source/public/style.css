@@ -39,3 +39,42 @@
   .main {padding:clamp(10px,1.3vh,24px) clamp(18px,1.7vw,34px) 0;}
   .stage {min-height:0!important;}
 }
+
+/* Relief Studio 8: keep primary navigation wholly inside the actual viewport.
+   An absolute 100dvh - 107px guess fails when browser font zoom/accessibility
+   changes the banner height; the flex column consumes the REAL remaining space. */
+@media (min-width: 761px) {
+  body[data-mode="poster"], body[data-mode="model"] {
+    height:100dvh; min-height:0; display:flex; flex-direction:column; overflow:hidden;
+  }
+  body[data-mode="poster"]>.topbar, body[data-mode="model"]>.topbar,
+  body[data-mode="poster"]>.access-note:not([hidden]),
+  body[data-mode="model"]>.access-note:not([hidden]) {flex:0 0 auto;}
+  body[data-mode="poster"]>.workspace,
+  body[data-mode="model"]>.workspace,
+  body[data-mode="poster"]>.access-note:not([hidden])+.workspace,
+  body[data-mode="model"]>.access-note:not([hidden])+.workspace {
+    flex:1 1 0; height:auto !important; min-height:0 !important;
+    min-width:0; overflow:hidden;
+  }
+  .sidebar {display:flex; flex-direction:column;min-height:0;overflow:hidden;}
+  .panels {flex:1 1 0;min-height:0;overflow:auto;overscroll-behavior:contain;}
+  .sidebar-bottom {
+    position:relative;z-index:2; flex:0 0 auto; margin-top:auto;
+    padding:12px 16px max(14px,env(safe-area-inset-bottom)) !important;
+    border-top:1px solid #e0e6dd; box-sizing:border-box; background:#fffefa;
+  }
+  .sidebar-bottom .hint {margin:6px 0 9px;font-size:10px;line-height:1.4;}
+  .step-navigation {display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);gap:8px;}
+  .step-navigation button {
+    display:flex;align-items:center;justify-content:center;min-width:0;
+    min-height:44px;width:100%;padding:9px 8px;line-height:1.25;
+    white-space:normal;text-align:center;overflow-wrap:anywhere;
+  }
+  .stage {min-height:0 !important;}
+  .main {min-height:0;overflow:hidden;}
+}
+@media (max-width: 760px) {
+  .sidebar-bottom {padding-bottom:max(18px,env(safe-area-inset-bottom))!important;}
+  .step-navigation button {white-space:normal;line-height:1.35;min-height:44px;}
+}

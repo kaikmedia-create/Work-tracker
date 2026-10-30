@@ -24,10 +24,12 @@ function panel(name){
  updateStepUI();document.querySelector('.panels').scrollTop=0;
 }
 function needsTerrain(){return !!data&&data.terrain.available===false&&(settings.mode==='model'||settings.contours||settings.hillshade);}
+function outdatedCoastline(){return !!data?.realData&&data.coastlineVersion!==8&&data.water?.some(w=>w.tags?.derived==='sea');}
 function commonReason(){
  if(abort)return 'Die Kartendaten werden gerade geladen. Du kannst den Abruf mit „Abbrechen“ beenden.';
  if(exporting)return 'Eine Datei wird gerade vorbereitet. Der Download wird danach freigegeben.';
  if(!data)return 'Noch keine Kartendaten vorhanden. Im Schritt „Ort“ einen Ausschnitt wählen und „Karte laden“ anklicken.';
+ if(outdatedCoastline())return 'Dieses gespeicherte Projekt enthält die alte Küstenberechnung. Bitte im Schritt „Ort“ die Karte neu laden, damit Land und Meer korrekt getrennt werden.';
  if(stale())return 'Der Ausschnitt wurde verändert. Bitte im Schritt „Ort“ neu laden; ein Export der alten Karte wäre irreführend.';
  if(needsTerrain())return settings.mode==='model'?'Dieses Projekt enthält nur 2D-Kartendaten. Im Schritt „Ort“ echte Geländehöhen für das 3D-Modell nachladen.':'Für Höhenlinien oder Höhenfärbung fehlen Geländedaten. Im Schritt „Ort“ neu laden oder diese Ebenen ausschalten.';
  return '';
@@ -180,7 +182,8 @@ async function load(){
   data=loaded;mesh=null;settings.landmarkOverrides={};landmarkControls();markerControls();
   if(settings.mode==='model'){progress('Geschlossenes Relief wird berechnet',.92);await build();if(!mesh){panel('model');quality();return;}}
   panel(settings.mode==='poster'?'style':'model');quality();preview();
-  notify(`${number(data.buildings.length,0)} Gebäude und ${number(data.roads.length,0)} Straßen-/Wasserlinien geladen.${data.terrain.available===false?' Für dieses 2D-Poster wurde kein Gelände benötigt.':' Echtes Gelände ist enthalten.'} Projekt über „Speichern“ sichern.`,'success');
+  const coastWarnings=(data.warnings||[]).filter(w=>/Küste|Küsten|Meer|Meeresfläche/.test(w));
+  notify(`${number(data.buildings.length,0)} Gebäude und ${number(data.roads.length,0)} Straßen-/Wasserlinien geladen.${data.terrain.available===false?' Für dieses 2D-Poster wurde kein Gelände benötigt.':' Echtes Gelände ist enthalten.'} ${coastWarnings.length?coastWarnings.slice(0,2).join(' '):'Projekt über „Speichern“ sichern.'}`,coastWarnings.length?'warning':'success');
  }catch(e){controller.abort();if(e.name==='AbortError')notify('Laden abgebrochen. Deine vorherigen Kartendaten bleiben erhalten.','info');else notify('Karte konnte nicht geladen werden: '+e.message+' Bitte erneut versuchen, einen kleineren Ausschnitt wählen oder eine gespeicherte Projektdatei öffnen.','error',{label:'Erneut versuchen',run:load});}
  finally{if(epoch===loadEpoch){abort=null;$('loader').hidden=true;labels();}}
 }

@@ -81,7 +81,86 @@ function stitchCoastlines(paths){
  }
  return ready;
 }
-function seaPolygonsFromCoastlines(coastlines,warnings){const polys=[];for(const raw of stitchCoastlines(coastlines)){for(const path of clipPolylineToRect(raw)){if(path.length<2)continue;const start=path[0],end=path.at(-1),sp=boundaryPos(start),ep=boundaryPos(end);if(sp===null||ep===null){warnings?.push?.('Eine Küstenlinie konnte nicht sauber an den Kartenausschnitt angepasst werden.');continue;}const cw=path.concat(boundaryRoute(end,start,'cw').slice(1));const ccw=path.concat(boundaryRoute(end,start,'ccw').slice(1));const probe=coastlineMid(path).point;const pick=insideRing(probe[0],probe[1],cw)?cw:insideRing(probe[0],probe[1],ccw)?ccw:Math.abs(polygonArea(cw))>=Math.abs(polygonArea(ccw))?cw:ccw;if(pick.length>=4)polys.push({rings:[pick.map(([x,y])=>[clamp(x,0,1),clamp(y,0,1)])]});}}return polys;}
+// Build shoreline faces from the full, *directed* coastline network. OSM specifies
+// land on the LEFT, sea on the RIGHT. Closing every way independently against the
+// bounding box causes overlaps that can flood towns when the selection changes.
+function seaPolygonsFromCoastlines(coastlines,warnings=[]){
+ const eps=1e-7,same=(a,b)=>Math.abs(a[0]-b[0])+Math.abs(a[1]-b[1])<eps;
+ const square=[[0,0],[1,0],[1,1],[0,1],[0,0]],vertices=[],index=new Map(),edges=[],open=[],islands=[];
+ const vertex=p=>{const point=[clamp(p[0],0,1),clamp(p[1],0,1)],key=point.map(v=>Math.round(v/eps)).join('/');if(!index.has(key)){index.set(key,vertices.length);vertices.push({p:point,out:[]});}return index.get(key);};
+ function arc(points,coast=0){
+  const from=vertex(points[0]),to=vertex(points.at(-1));if(from===to)return;
+  const id=edges.length;
+  edges.push({from,to,points,coast,twin:id+1,visited:false});
+  edges.push({from:to,to:from,points:points.slice().reverse(),coast:-coast,twin:id,visited:false});
+  vertices[from].out.push(id);vertices[to].out.push(id+1);
+ }
+ for(const raw of stitchCoastlines(coastlines)){
+  const isClosed=raw.length>=4&&same(raw[0],raw.at(-1));
+  if(isClosed){
+   // The closed island can be clipped by the selection; only fully contained
+   // rings are handled independently. Crossing rings are treated as open ways.
+   const contained=raw.every(([x,y])=>x>=0&&x<=1&&y>=0&&y<=1);
+   if(contained){islands.push(raw);continue;}
+  }
+  for(const path of clipPolylineToRect(raw)){
+   if(path.length<2)continue;
+   if(boundaryPos(path[0])===null||boundaryPos(path.at(-1))===null){warnings.push('Unvollständige Küstenlinie im Ausschnitt – unsichere Meeresfläche nicht gefüllt.');continue;}
+   if(same(path[0],path.at(-1)))continue;
+   open.push(path);
+  }
+ }
+ if(open.length){
+  // Boundary links are shared by ALL coastline segments, not constructed
+  // separately for every way. The resulting faces are disjoint.
+  const boundary=[...new Set(open.flatMap(path=>[vertex(path[0]),vertex(path.at(-1))]))];
+  for(const corner of square.slice(0,4))boundary.push(vertex(corner));
+  const sorted=[...new Set(boundary)].sort((a,b)=>boundaryPos(vertices[a].p)-boundaryPos(vertices[b].p));
+  for(let i=0;i<sorted.length;i++){
+   const s=vertices[sorted[i]].p,t=vertices[sorted[(i+1)%sorted.length]].p;
+   const pts=boundaryRoute(s,t,'cw');arc(pts,0);
+  }
+  for(const path of open)arc(path,1);
+ }
+ if(!edges.length&&!islands.length)return [];
+ // At each junction, the clockwise/anticlockwise angular order identifies
+ // the next half-edge bordering the same face on its RIGHT side.
+ const dir=id=>{const p=edges[id].points;for(let j=1;j<p.length;j++){let dx=p[j][0]-p[0][0],dy=p[j][1]-p[0][1];if(Math.abs(dx)+Math.abs(dy)>eps)return Math.atan2(dy,dx);}return 0;};
+ for(const v of vertices)v.out.sort((a,b)=>dir(a)-dir(b));
+ const faceRings=[];
+ for(let start=0;start<edges.length;start++){
+  if(edges[start].visited)continue;
+  let eId=start,points=[],signs=[],closed=false;
+  for(let guard=0;guard<edges.length+4;guard++){
+   const e=edges[eId];if(e.visited)break;
+   e.visited=true;points.push(...e.points.slice(0,-1));if(e.coast)signs.push(e.coast);
+   const outs=vertices[e.to].out,idx=outs.indexOf(e.twin);
+   if(idx<0)break;
+   eId=outs[(idx-1+outs.length)%outs.length];
+   if(eId===start){closed=true;break;}
+  }
+  if(!closed||points.length<3){warnings.push('Küstengeometrie ist nicht geschlossen – einzelne Meeresbereiche ausgelassen.');continue;}
+  const signed=polygonArea(points);
+  if(signed<=1e-10)continue; // the unbounded outside of the rectangle
+  if(signs.some(s=>s===1)&&signs.some(s=>s===-1)){
+   warnings.push('Widersprüchliche Küstenrichtung erkannt – unsichere Meeresfläche ausgelassen.');continue;
+  }
+  if(signs.some(s=>s===1))faceRings.push(points);
+ }
+ const waters=faceRings.map((ring,i)=>({id:'coastline/'+i,name:'Meer',tags:{natural:'coastline',derived:'sea'},rings:[ring]}));
+ for(const ring of islands){
+  if(Math.abs(polygonArea(ring))<1e-10)continue;
+  if(polygonArea(ring)>0){waters.push({id:'coastline/inland-sea-'+waters.length,name:'Meer',tags:{natural:'coastline',derived:'sea'},rings:[ring]});continue;}
+  let parent=waters.filter(w=>insideRing(ring[0][0],ring[0][1],w.rings[0])).sort((a,b)=>Math.abs(polygonArea(a.rings[0]))-Math.abs(polygonArea(b.rings[0])))[0];
+  if(!parent){
+   if(open.length){warnings.push('Küsteninsel ohne eindeutig zugeordnete Meeresfläche ausgelassen.');continue;}
+   parent=waters.find(w=>w.id==='coastline/sea-around-island');
+   if(!parent){parent={id:'coastline/sea-around-island',name:'Meer',tags:{natural:'coastline',derived:'sea'},rings:[square.slice()]};waters.push(parent);}
+  }
+  parent.rings.push(ring);
+ }
+ return waters;
+}
 function parseOSM(raw,bounds) {
  if(!raw||!Array.isArray(raw.elements))throw Error('Kartendienst hat keine gültigen OSM-Daten geliefert.');
  if(raw.remark)throw Error('Kartendienst: '+String(raw.remark).slice(0,180));
@@ -125,7 +204,19 @@ function parseOSM(raw,bounds) {
  }
  const cells=new Map(); for(const p of buildings.filter(b=>b.tags['building:part'])){const c=centroid(p.rings[0]),key=Math.floor(c[0]*100)+','+Math.floor(c[1]*100);if(!cells.has(key))cells.set(key,[]);cells.get(key).push(c);}
  const kept=buildings.filter(b=>{if(b.tags['building:part'])return true;const bb=ringBox(b.rings[0]);if((bb[2]-bb[0])*(bb[3]-bb[1])>4)return true;for(let y=Math.floor(bb[1]*100);y<=Math.ceil(bb[3]*100);y++)for(let x=Math.floor(bb[0]*100);x<=Math.ceil(bb[2]*100);x++)if((cells.get(x+','+y)||[]).some(c=>inside(...c,b.rings)))return false;return true;});
- for(const [index,poly] of seaPolygonsFromCoastlines(coastlines,warnings).entries())water.push({id:'coastline/'+index,name:'Meer',tags:{natural:'coastline',derived:'sea'},rings:poly.rings});
+ // Fail closed if a coastline geometry would flood a built-up part of town.
+ // Natural=coastline explicitly separates land from sea, so flooding many
+ // OSM building centres is a strong indication of broken/missing ways.
+ let sea=seaPolygonsFromCoastlines(coastlines,warnings);
+ if(sea.length&&kept.length>=12){
+  const sample=kept.filter((_,i)=>i%Math.max(1,Math.floor(kept.length/240))===0).slice(0,240),
+        flooded=sample.filter(b=>sea.some(w=>inside(...centroid(b.rings[0]),w.rings))).length;
+  if(flooded>=Math.max(5,Math.ceil(sample.length*.12))){
+   warnings.push('Küstenprüfung: Meeresfläche würde '+flooded+' von '+sample.length+' geprüften Gebäuden überdecken. Meer vorsichtshalber nicht gefüllt. Ausschnitt oder Datenquelle prüfen.');
+   sea=[];
+  }
+ }
+ water.push(...sea);
  return {buildings:kept,roads,water,parks,landmarks:landmarks.filter((p,i,a)=>a.findIndex(q=>q.name===p.name)===i).slice(0,70),warnings};
 }
 function sampleTerrain(terrain,u,v) {
@@ -251,6 +342,6 @@ function model3mf(mesh,name='City') {
  const xml=`<?xml version="1.0" encoding="UTF-8"?><model unit="millimeter" xml:lang="de-DE" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"><metadata name="Title">${escape(name)}</metadata><metadata name="Description">Map data © OpenStreetMap contributors, ODbL. Terrain: Mapzen / AWS Terrain Tiles. Simplified raster relief, no surveyed architectural model.</metadata><resources><object id="1" type="model"><mesh><vertices>${verts.join('')}</vertices><triangles>${triangles.join('')}</triangles></mesh></object></resources><build><item objectid="1"/></build></model>`;
  return zip({'[Content_Types].xml':'<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/></Types>','_rels/.rels':'<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Target="/3D/3dmodel.model" Id="rel0" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/></Relationships>','3D/3dmodel.model':xml});
 }
-Object.assign(R,{clamp,finite,project,unproject,boundsFor,boundsInfo,validateBounds,normalized,inside,insideRing,ringBox,centroid,parseHeight,roadClass,parseOSM,sampleTerrain,defaults,paperSizes,palettes,cleanSettings,validateProject,simplify,contours,buildMesh,stl,crc32,zip,model3mf});
+Object.assign(R,{clamp,finite,project,unproject,boundsFor,boundsInfo,validateBounds,normalized,inside,insideRing,ringBox,centroid,parseHeight,roadClass,parseOSM,seaPolygonsFromCoastlines,sampleTerrain,defaults,paperSizes,palettes,cleanSettings,validateProject,simplify,contours,buildMesh,stl,crc32,zip,model3mf});
 if(typeof module!=='undefined')module.exports=R;
 })(typeof self!=='undefined'?self:globalThis);

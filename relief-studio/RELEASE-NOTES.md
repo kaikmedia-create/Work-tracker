@@ -1,3 +1,19 @@
+# Release 8 — 30.10.2026
+
+- Kritischen Küstenfehler bei kleinen Ausschnitten behoben: gemeinsame planar-topologische Verarbeitung statt einzelner Eckschlüsse; OSM-Regel Land links / Meer rechts.
+- Land-Sicherheitscheck: verdächtige Meeresflächen über vielen Gebäuden werden nicht gezeichnet, stattdessen verständliche Warnmeldung.
+- Foz-Regression für 3,65 × 3,42 km und 8 × 7 km; Alt-Caches mit `map:v8:` sicher umgangen, Export alter Küstenprojektdateien erklärt/blockiert.
+- Buttons auf großen und flachen Desktop-Fenstern vollständig sichtbar: Browserhöhe wird dynamisch in Header, Arbeitsfläche und Navigationsleiste aufgeteilt; Eingabebereich scrollt separat.
+- Testbasis: die zwei vom Nutzer bereitgestellten Foz-PDFs (kleiner Ausschnitt nahezu vollständig blau, großer Ausschnitt plausibel); synthetische Koordinaten für reproduzierbaren Funktionstest. Realer Live-Overpass-Abruf und physischer Druck sind nicht Bestandteil der bestandenen Tests.
+
+## Relief Studio 7 — Poster-Preview-Bugfix (25.10.2026)
+
+- Behoben: weißer Überstand am Posterrand, besonders bei 60 × 80 cm. Ursache war ein festes DIN-A4-Seitenverhältnis im CSS, obwohl das Canvas korrekt 3:4 gerendert wurde.
+- Papiervorschau und Canvas erhalten jetzt identische Breite, Höhe und Seitenverhältnis aus dem gewählten Druckformat. Keine zusätzliche weiße Fläche; Canvas ist exakt auf das Poster begrenzt.
+- Getestet: 8 Formate × 6 Viewports und Hoch-/Querformat (54 Ausrichtungskontrollen); 38 Logiktests.
+- Das Export-Rendering selbst war davon nicht betroffen; es wurde zusätzlich erneut überprüft.
+- GitHub-Pages-PIN ist nach wie vor nur eine statische Vorschau-Sperre, keine sichere Zugangskontrolle.
+
 # Relief Studio 6 · 2026-10-25
 
 - Browseransicht für Desktop bis 3200×1800 ohne vertikales/waagerechtes Dokument-Scrolling; separate Einstellungsleiste.
