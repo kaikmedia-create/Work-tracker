@@ -4,22 +4,35 @@ on:
     branches: [relief-studio-12-triptych]
     paths: [.github/workflows/relief-triptych-dependencies.yml]
 permissions:
-  contents: read
+  contents: write
 jobs:
   vendor:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Fetch pinned PDF library without running package scripts
+      - uses: actions/checkout@v4
+      - name: Fetch pinned libraries without running package scripts
         run: |
           npm pack pdf-lib@1.17.1 --ignore-scripts
-          mkdir -p vendor
-          tar -xzf pdf-lib-1.17.1.tgz package/dist/pdf-lib.min.js package/LICENSE.md
-          cp package/dist/pdf-lib.min.js vendor/pdf-lib-1.17.1.min.js
-          cp package/LICENSE.md vendor/pdf-lib-LICENSE.md
-          sha256sum vendor/* > vendor/SHA256SUMS
+          npm pack pdfjs-dist@4.10.38 --ignore-scripts
+          mkdir -p lib1 lib2 relief-studio/vendor12
+          tar -xzf pdf-lib-1.17.1.tgz -C lib1 package/dist/pdf-lib.min.js package/LICENSE.md
+          tar -xzf pdfjs-dist-4.10.38.tgz -C lib2 package/build/pdf.mjs package/build/pdf.worker.mjs package/LICENSE
+          cp lib1/package/dist/pdf-lib.min.js relief-studio/vendor12/pdf-lib.min.js
+          cp lib1/package/LICENSE.md relief-studio/vendor12/pdf-lib-LICENSE.md
+          cp lib2/package/build/pdf.mjs lib2/package/build/pdf.worker.mjs relief-studio/vendor12/
+          cp lib2/package/LICENSE relief-studio/vendor12/pdfjs-LICENSE.txt
+          cd relief-studio/vendor12
+          sha256sum *.js *.mjs > SHA256SUMS
       - uses: actions/upload-artifact@v4
         with:
-          name: relief-triptych-pdf-library
-          path: vendor/
+          name: relief-triptych-pdf-libraries
+          path: relief-studio/vendor12/
           retention-days: 7
+      - name: Commit only verified vendor files to development branch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add relief-studio/vendor12
+          git diff --cached --quiet || git commit -m 'Vendor pdf-lib 1.17.1 and PDF.js 4.10.38 with license notices'
+          git push origin HEAD:relief-studio-12-triptych
