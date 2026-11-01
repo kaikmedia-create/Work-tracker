@@ -1,0 +1,68 @@
+name: Relief Studio 12 release verification
+on:
+  push:
+    branches: [relief-studio-12-triptych]
+    paths: [.github/workflows/relief-triptych-release.yml]
+permissions:
+  contents: write
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Acquire exact tested source archive
+        env:
+          SOURCE_ARCHIVE: 'https://sdmntprdenmarkeast.oaiusercontent.com/files/00000000-d5b0-8210-a5db-86d9c08f01a8/raw?se=2026-11-01T17%3A02%3A33Z&sp=r&sv=2026-02-06&sr=b&scid=b9474ad4-fea0-50f1-98f1-17f78e9b5c65&skoid=40ce4b34-a373-4a62-b0bf-44befe221915&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-11-01T08%3A10%3A06Z&ske=2026-11-02T08%3A10%3A06Z&sks=b&skv=2026-02-06&sig=%2BJhXCS5WTv6TVSYbCo/Rp4iH1uvbms1uB7kcwTCDp5Q%3D'
+        run: |
+          curl --fail --silent --show-error --location --max-time 60 "$SOURCE_ARCHIVE" -o /tmp/source12.zip
+          echo 'b6b72c2849255ef54604af1219558926c25c6349c10c4353a4b731fc4aa585a3  /tmp/source12.zip' | sha256sum -c -
+          python - <<'PY'
+          import zipfile,pathlib,json,hashlib
+          with zipfile.ZipFile('/tmp/source12.zip') as z:
+              for n in z.namelist():
+                  p=pathlib.PurePosixPath(n)
+                  assert n.startswith('relief-studio/') and '..' not in p.parts and not p.is_absolute(),n
+                  assert not n.endswith(('auth.local.json','.env')),n
+              z.extractall('.')
+          for n,h in json.loads(pathlib.Path('relief-studio/RELEASE-12-SHA256.json').read_text()).items():
+              assert hashlib.sha256(pathlib.Path(n).read_bytes()).hexdigest()==h,n
+          PY
+          rm -f relief-studio/upgrade12-a.b64
+          mkdir -p relief-studio/source/public/vendor12 relief-studio/source/site
+          cp -a relief-studio/vendor12/. relief-studio/source/public/vendor12/
+          find relief-studio -maxdepth 1 -type f \( -name 'bundle*' -o -name 'upgrade*' -o -name 'gate-*' -o -name 'index.html' -o -name 'favicon.svg' -o -name 'logo.svg' \) -exec cp {} relief-studio/source/site/ \;
+      - name: Install test tools
+        run: |
+          python -m pip install playwright pymupdf pillow
+          python -m playwright install --with-deps chromium
+      - name: Logic, source-integrity and print tests
+        working-directory: relief-studio/source
+        run: |
+          python tests/v12_fixtures.py
+          python tools/standalone.py
+          npm test
+          CHROMIUM="$(python -c 'from playwright.sync_api import sync_playwright; p=sync_playwright().start(); print(p.chromium.executable_path)')" python tests/v12_browser.py
+          python tests/v12_pdf_check.py
+      - name: Commit only verified release files on feature branch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add relief-studio/index.html relief-studio/gate-v12.js relief-studio/upgrade12.b64 relief-studio/upgrade12.json relief-studio/RELEASE-12-SHA256.json relief-studio/README.md relief-studio/RELEASE-NOTES-12.md relief-studio/TEST-REPORT-12.md
+          git add -u relief-studio/upgrade12-a.b64
+          git add relief-studio/source/public relief-studio/source/tests relief-studio/source/tools relief-studio/source/site
+          git add relief-studio/source/package.json relief-studio/source/server.mjs relief-studio/source/setup.mjs relief-studio/source/README.md relief-studio/source/RELEASE-NOTES-12.md relief-studio/source/TEST-REPORT-12.md
+          git diff --cached --quiet || git commit -m 'Release tested v12 landscape triptych composer and reproducible source'
+          git push origin HEAD:relief-studio-12-triptych
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: relief-v12-verification
+          path: |
+            relief-studio/source/reports/v12/*.json
+            relief-studio/source/reports/v12/format-800x600.pdf
+            relief-studio/source/reports/v12/layout.png
+          retention-days: 7
