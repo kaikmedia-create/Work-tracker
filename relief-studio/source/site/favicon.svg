@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Relief Studio">
+  <rect width="64" height="64" rx="17" fill="#183C36"/>
+  <path d="M12 41 26 24 35 34 46 19 54 39" fill="none" stroke="#F8FAF6" stroke-width="5.4" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M12 49c11-8 18-2 27-6 5-2 9-5 13-5" fill="none" stroke="#83CDB8" stroke-width="4.5" stroke-linecap="round"/>
+</svg>

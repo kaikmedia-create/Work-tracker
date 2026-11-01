@@ -1,3 +1,41 @@
+# Relief Studio 12 – Dreier-Kombi im Querformat
+
+Unter den beiden großen Startkarten gibt es den kleinen Link **3er-Plakat-Kombi im Querformat**. Keine dritte große Karte.
+
+1. **Motive:** Drei vorhandene PDFs, PNGs, JPEGs oder `.relief.json`-Projekte laden. Bei mehrseitigen PDFs die Seite wählen. Alternativ **Drei Städte nacheinander gestalten** starten; jede Stadt durch den normalen Poster-Editor führen und mit **Stadt für Kombi übernehmen** bestätigen.
+2. **Layout:** Querformat auswählen (Foto-/Rahmenformate, DIN A5–A0, 80×60 cm, Panorama oder eigene Maße), Außenrand, Abstände, Motivgröße, vertikale Ausrichtung und Papierfarbe einstellen. Die Reihenfolge kann geändert werden. Die Quellposter werden proportional eingepasst, nicht verzerrt oder beschnitten.
+3. **Druck:** PDF vorbereiten, Maße/Dateigröße/Hinweise prüfen und herunterladen. Ergebnis ist eine einzige Querformatseite, nicht drei aufeinanderfolgende Seiten. **Eine vorhandene Vektor-PDF bleibt vektorbasiert; Fotos und gescannte PDFs werden nicht automatisch zu Vektoren.**
+
+Kombi über **Speichern** als `.triptych.json` sichern und später öffnen. Quellen bleiben lokal im Browser. Ohne Speichern gehen Änderungen beim Schließen verloren. Eine Einzeldatei darf max. 35 MB, alle Quellen zusammen max. 75 MB haben. Die Ausgabe ist auf 8 MB begrenzt; übergroße PDFs werden mit Erklärung abgelehnt, nicht heimlich gerastert.
+
+Die PDF besitzt exakte Millimetermaße und eine TrimBox, ist aber keine zertifizierte PDF/X-/CMYK-Datei. Es wird kein künstlicher Beschnitt hinzugefügt. Formulare/Annotationen vor dem Import in der Quellanwendung als Druckinhalt exportieren. Verschlüsselte PDFs werden nicht umgangen.
+
+PDF-Zusammenbau: PDF-LIB 1.17.1 (MIT), Bildschirmvorschau: PDF.js 4.10.38 (Apache 2.0). Bibliotheken und Lizenzhinweise liegen in `public/vendor12`; in der Einzel-HTML sind die Bibliotheken eingebettet. Nicht aus dem ZIP entfernen. Die Vorschau ist gerastert, die Druck-PDF nicht.
+
+### Neue Tests
+
+`python tests/v12_fixtures.py`, `npm test`, `python tests/v12_browser.py`, `python tests/v12_pdf_check.py`. Python: Playwright, PyMuPDF, Pillow; Chromium über `CHROMIUM` konfigurierbar. Lasttest: `node tests/v12_stress.mjs` (drei parallele Prozesse). Synthetische Testgeometrie ist keine reale Stadtkarte. Details in `TEST-REPORT-12.md`.
+
+---
+
+# Relief Studio 11 – stabilerer Kartenabruf
+
+**Diese ZIP enthält bereits den vollständigen Version-11-Quellcode.**
+
+Direkt starten: `Relief-Studio.html` im Browser öffnen. Neue Kartendaten benötigen Internet. Die lokale Einzeldatei hat keinen PIN-Schutz.
+
+Eigener Server: `node setup.mjs` für ein eigenes Passwort, danach `node server.mjs`. Keine Passwortdatei ist mitgeliefert. Für öffentliche Bereitstellung HTTPS und ein starkes Passwort verwenden.
+
+## Neu in Version 11
+
+Kleinere Geometriepakete, separate Flächenrelationen, Wiederaufnahme mit gespeicherten Pflichtpaketen, maximal zwei parallele OSM-Anfragen, begrenzter Ersatzversuch, höchstens zwölf Sekunden zusätzliche Wartezeit für historische Marker. Keine Veröffentlichung einer unvollständigen Basiskarte. Erfolgreiche Kartenteile und Höhenkacheln werden zwischengespeichert; Wiederholungen müssen diese nicht neu herunterladen.
+
+Tests: `npm test`; gezielter Lade-/Lasttest: `npm run test:loader` (Browserteil benötigt Python Playwright und Chromium). Ergebnisse, verwendete synthetische Daten und Grenzen sind in `TEST-REPORT-11.md` dokumentiert.
+
+Die Bereitstellung in `site/` nutzt das unveränderte v10-Grundpaket plus einen SHA-256-geprüften v11-Patch. Das ist eine Speicher-/Übertragungsoptimierung, keine serverseitige Zugangskontrolle. Die normale Anwendung in `public/` und die Einzeldatei sind bereits vollständig auf Version 11.
+
+## Bisherige Funktionen und Anleitungen (Versionshistorie)
+
 # Relief Studio 10 — ehrlicher Fortschritt und neues 3-Farben-Logo
 
 - **Datenphasen getrennt:** Zuerst OSM-Gebäude, Straßen und Gewässer, anschließend historische Orte als optionaler Zusatzabruf; in 3D außerdem echte Höhenkacheln. Ein Ausfall der zusätzlichen Orte blockiert die fertige Karte nicht. Es werden keine erfundenen Orte ergänzt.

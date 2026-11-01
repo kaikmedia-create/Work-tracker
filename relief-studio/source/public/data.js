@@ -1,115 +1,176 @@
+/* Relief Studio 11: bounded requests, resumable packages, no incomplete core maps.
+ * Public servers: at most two requests at once; never rotate to evade HTTP 429.
+ */
 (function(R){
 'use strict';
-const TIMEOUT=55000;
-// Header-wait is bounded. A response body may run longer ONLY while bytes arrive.
-const BODY_IDLE_MS=26000, BODY_MAX_MS=185000;
-function abortError(){return new DOMException('Abgebrochen','AbortError');}
-async function request(url,options={},timeout=TIMEOUT){
- const controller=new AbortController(),source=options.signal,abort=()=>controller.abort();
- if(source?.aborted)throw abortError();source?.addEventListener('abort',abort,{once:true});
+const OVERPASS=['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter'];
+const BODY_IDLE_MS=26000,BODY_MAX_MS=185000;
+const abortError=()=>new DOMException('Abgebrochen','AbortError');
+const send=(fn,e)=>{if(typeof fn==='function')fn(e);};
+function error(code,message,extra={}){return Object.assign(new Error(message),{code,...extra});}
+function check(signal){if(signal?.aborted)throw abortError();}
+function pause(ms,signal){return new Promise((resolve,reject)=>{check(signal);const stop=()=>{clearTimeout(timer);reject(abortError());};const timer=setTimeout(()=>{signal?.removeEventListener('abort',stop);resolve();},ms);signal?.addEventListener('abort',stop,{once:true});});}
+async function timed(promise,ms,signal,message){
+ check(signal);let timer,stop;
+ try{return await Promise.race([promise,new Promise((_,reject)=>{timer=setTimeout(()=>reject(error('IDLE',message)),ms);stop=()=>reject(abortError());signal?.addEventListener('abort',stop,{once:true});})]);}
+ finally{clearTimeout(timer);signal?.removeEventListener('abort',stop);}
+}
+// content-length may be the compressed size, while the browser yields decoded bytes.
+function knownLength(response){const h=response.headers,encoding=h?.get('content-encoding');const n=Number(h?.get('content-length'));return (!encoding||encoding==='identity')&&n>0?n:null;}
+async function readBytes(response,limit,idle,options={}){
+ const {signal,onActivity}=options,total=knownLength(response),maxTime=options.maxTime||BODY_MAX_MS;
+ if(total>limit){response.body?.cancel().catch(()=>{});throw error('SIZE','Zu viele Kartendaten: sichere Obergrenze überschritten.');}
+ check(signal);send(onActivity,{status:'headers',received:0,total});
+ if(!response.body?.getReader){const b=new Uint8Array(await timed(response.arrayBuffer(),idle,signal,'Datendienst hat keine Daten übertragen.'));if(b.length>limit)throw error('SIZE','Zu viele Kartendaten: sichere Obergrenze überschritten.');check(signal);send(onActivity,{status:'bytes',received:b.length,total,complete:true});return b;}
+ const reader=response.body.getReader(),chunks=[];let size=0,lastReport=0,finished=false;const start=Date.now();
+ try{while(true){
+  const left=maxTime-(Date.now()-start);if(left<=0)throw error('IDLE','Die maximale Übertragungszeit dieses Datenpakets wurde erreicht.');
+  const part=await timed(reader.read(),Math.min(idle,left),signal,size?'Datenübertragung steht still. Bereits geladene Pakete bleiben gespeichert.':'Datendienst hat keine Daten übertragen.');check(signal);
+  if(part.done){finished=true;break;}if(!part.value?.byteLength)continue;
+  size+=part.value.byteLength;if(size>limit)throw error('SIZE','Zu viele Kartendaten: sichere Obergrenze überschritten.');chunks.push(part.value);
+  if(Date.now()-lastReport>100){send(onActivity,{status:'bytes',received:size,total});lastReport=Date.now();}
+ }
+ send(onActivity,{status:'bytes',received:size,total,complete:true});const all=new Uint8Array(size);let offset=0;for(const c of chunks){all.set(c,offset);offset+=c.byteLength;}return all;
+ }finally{if(!finished)reader.cancel().catch(()=>{});try{reader.releaseLock();}catch{}}
+}
+async function readJSONLimited(response,limit=23000000,idle=BODY_IDLE_MS,options={}){
+ const bytes=await readBytes(response,limit,idle,options);await pause(0,options.signal);send(options.onActivity,{status:'parsing',received:bytes.length,total:knownLength(response)});
+ try{return JSON.parse(new TextDecoder().decode(bytes));}catch{throw error('FORMAT','Kartendienst hat keine lesbare JSON-Antwort geliefert.');}
+}
+async function request(url,options={},timeout=40000){
+ const controller=new AbortController(),source=options.signal,abort=()=>controller.abort();check(source);source?.addEventListener('abort',abort,{once:true});
  const timer=setTimeout(abort,timeout);
- try{const r=await fetch(url,{...options,signal:controller.signal});if(!r.ok){const reason=r.status===429?'Zu viele Anfragen beim Kartendienst. Bitte später erneut versuchen.':r.status>=500?'Der externe Kartendienst ist vorübergehend nicht verfügbar.':r.status===401?'Die Anmeldung ist abgelaufen. Bitte neu anmelden.':'Der Datendienst hat die Anfrage abgelehnt.';throw Error(`${reason} (HTTP ${r.status})`);}return r;}
- catch(e){if(source?.aborted)throw abortError();if(controller.signal.aborted)throw Error('Zeitlimit des Datendienstes erreicht. Bitte später erneut versuchen oder den Ausschnitt verkleinern.');if(e instanceof TypeError)throw Error('Keine Verbindung zum Datendienst. Internetverbindung oder eine Browser-/Netzwerksperre prüfen.');throw e;}
+ try{const r=await fetch(url,{...options,signal:controller.signal});if(!r.ok){r.body?.cancel().catch(()=>{});const retryAfter=r.headers?.get('retry-after');throw error(r.status===429?'RATE_LIMIT':r.status>=500?'SERVER':'HTTP',r.status===429?'Zu viele Anfragen beim Kartendienst (HTTP 429). Bitte nach der angezeigten Pause erneut versuchen.':`Datendienst derzeit nicht erreichbar (HTTP ${r.status}).`,{status:r.status,retryAfter});}return r;}
+ catch(e){if(source?.aborted)throw abortError();if(controller.signal.aborted)throw error('HEADER_TIMEOUT','Der Kartendienst liefert noch keine Antwort.');if(e instanceof TypeError)throw error('NETWORK','Verbindung zum Kartendienst unterbrochen.');throw e;}
  finally{clearTimeout(timer);source?.removeEventListener('abort',abort);}
 }
-const OVERPASS=['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter'];
-// Keep geometries and historical POIs separate. Slow or rate-limited landmark
-// discovery must not invalidate roads, buildings and coastlines already loaded.
-function osmQuery(b){const box=[b[1],b[0],b[3],b[2]].map(x=>x.toFixed(6)).join(',');return `[out:json][timeout:50][bbox:${box}];(way[building][building!="no"];way["building:part"];way[highway];way[waterway];way[natural=water];way[natural=coastline];way[water];way[landuse~"^(forest|grass)$"];way[natural=wood];way[leisure=park];relation[type=multipolygon][building];relation[type=multipolygon][natural=water];relation[type=multipolygon][water];relation[type=multipolygon][waterway=riverbank];);out geom;`;}
-function poiQuery(b){const box=[b[1],b[0],b[3],b[2]].map(x=>x.toFixed(6)).join(',');return `[out:json][timeout:35][bbox:${box}];(nwr[historic][name];nwr[heritage][name];nwr[man_made~"^(tower|lighthouse)$"][name];nwr[tourism~"^(museum|artwork|attraction|gallery|viewpoint)$"][name];nwr[amenity=place_of_worship][name];);out center;`;}
-const send=(fn,event)=>{if(typeof fn==='function')fn(event);};
-const CACHE_DB='relief-studio-v10';
-let databasePromise;
-function openCache(){
- if(databasePromise)return databasePromise;
- databasePromise=new Promise(resolve=>{try{const q=indexedDB.open(CACHE_DB,1);q.onupgradeneeded=()=>q.result.createObjectStore('maps');q.onsuccess=()=>resolve(q.result);q.onerror=()=>resolve(null);q.onblocked=()=>resolve(null);}catch{resolve(null);}});
- return databasePromise;
+const boxText=b=>[b[1],b[0],b[3],b[2]].map(x=>x.toFixed(6)).join(',');
+const WAY_FILTERS='way[building][building!="no"];way["building:part"];way[highway];way[waterway];way[natural=water];way[natural=coastline];way[water];way[landuse~"^(forest|grass)$"];way[natural=wood];way[leisure=park];';
+const REL_FILTERS='relation[type=multipolygon][building][building!="no"];relation[type=multipolygon][natural=water];relation[type=multipolygon][water];relation[type=multipolygon][waterway=riverbank];';
+function osmQuery(b,layer='base'){
+ if(!['base','geometry','relations'].includes(layer))throw Error('Unbekannte Kartenebene.');
+ // qt avoids sorting thousands of objects by ID. Keep FULL polygon geometry:
+ // clipping relation members on the server would create false coastlines/holes.
+ return `[out:json][timeout:25][maxsize:134217728][bbox:${boxText(b)}];(${layer!=='relations'?WAY_FILTERS:''}${layer!=='geometry'?REL_FILTERS:''});out geom qt;`;
 }
-async function cacheGet(key){const db=await openCache();if(!db)return null;return new Promise(resolve=>{try{const req=db.transaction('maps','readonly').objectStore('maps').get(key);req.onsuccess=()=>{const value=req.result;resolve(value?.time&&Date.now()-value.time<(value.ttl||72*3600000)?value.data:null);};req.onerror=()=>resolve(null);}catch{resolve(null);}});}
-async function cacheSet(key,data,ttl=72*3600000){const db=await openCache();if(!db)return;try{await new Promise(resolve=>{const t=db.transaction('maps','readwrite'),s=t.objectStore('maps');s.put({time:Date.now(),data,ttl},key);const keys=s.getAllKeys();keys.onsuccess=()=>{for(const k of keys.result.slice(0,Math.max(0,keys.result.length-6)))s.delete(k);};t.oncomplete=t.onerror=t.onabort=resolve;});}catch{/* browser quota / private mode: keep live data */}}
-// Public Overpass endpoints may reject huge map responses. Cap all JSON reads, including chunked transfers.
-// The optional fourth argument emits byte-accurate transfer reports. An empty
-// stream does NOT advance the progress bar, and long transfers are extended only
-// as long as subsequent chunks arrive. 185s is the absolute cap for one body.
-async function readJSONLimited(response,limit=22_000_000,timeoutMs=BODY_IDLE_MS,options={}){
- const {signal,onActivity}=options,declared=Number(response.headers?.get('content-length')||0),total=declared>0?declared:null;
- if(declared>limit)throw Error('Zu viele Kartendaten für diesen Browser. Ausschnitt verkleinern oder eigenen OSM-Datendienst nutzen.');
- if(signal?.aborted)throw abortError();
- send(onActivity,{status:'headers',received:0,total});
- if(!response.body?.getReader){const value=await response.text();send(onActivity,{status:'bytes',received:new TextEncoder().encode(value).length,total});return JSON.parse(value);}
- const reader=response.body.getReader(),buffers=[];let received=0,lastReport=0,started=Date.now(),finished=false;
- const stop=()=>{reader.cancel().catch(()=>{});};
- try{
-  while(true){
-   if(signal?.aborted)throw abortError();
-   const left=BODY_MAX_MS-(Date.now()-started);
-   if(left<=0)throw Error('Datenübertragung wurde nach drei Minuten begrenzt. Bitte einen kleineren Ausschnitt laden.');
-   let timeout,stopOnAbort;
-   const next=new Promise((resolve,reject)=>{
-    timeout=setTimeout(()=>reject(Error(received?'Datenübertragung steht seit 26 Sekunden still.':'Datendienst hat keine Daten übertragen.')),Math.min(timeoutMs,left));
-    stopOnAbort=()=>reject(abortError());signal?.addEventListener('abort',stopOnAbort,{once:true});
-    reader.read().then(resolve,reject);
-   });
-   let result;try{result=await next;}finally{clearTimeout(timeout);signal?.removeEventListener('abort',stopOnAbort);}
-   if(result.done){finished=true;break;}
-   if(!result.value?.byteLength)continue;
-   received+=result.value.byteLength;
-   if(received>limit)throw Error('Kartendaten überschreiten die sichere Obergrenze. Bitte kleineren Ausschnitt wählen.');
-   buffers.push(result.value);
-   if(Date.now()-lastReport>110||total&&received>=total){send(onActivity,{status:'bytes',received,total});lastReport=Date.now();}
+function poiQuery(b){return `[out:json][timeout:8][maxsize:33554432][bbox:${boxText(b)}];(nwr[historic][name];nwr[heritage][name];nwr[man_made~"^(tower|lighthouse)$"][name];nwr[tourism~"^(museum|artwork|attraction|gallery|viewpoint)$"][name];nwr[amenity=place_of_worship][name];);out center qt;`;}
+// The cache has a stable name and bounded disk + RAM usage. Storage never blocks a
+// network load indefinitely (Safari private mode / blocked IDB upgrades included).
+function createCache(){
+ const memory=new Map();let bytes=0,opening;
+ const MAX=48*1024*1024,TTL=72*3600000;
+ const remember=(k,record)=>{if(memory.has(k))bytes-=memory.get(k).size;memory.delete(k);memory.set(k,record);bytes+=record.size;while(bytes>MAX&&memory.size){const key=memory.keys().next().value;bytes-=memory.get(key).size;memory.delete(key);}};
+ async function db(){if(opening)return opening;opening=new Promise(resolve=>{let done=false;const finish=v=>{if(done){v?.close();return;}done=true;clearTimeout(timer);resolve(v);};const timer=setTimeout(()=>finish(null),700);try{const req=indexedDB.open('relief-data-packages',1);req.onupgradeneeded=()=>{req.result.createObjectStore('data');req.result.createObjectStore('meta');};req.onsuccess=()=>finish(req.result);req.onerror=req.onblocked=()=>finish(null);}catch{finish(null);}});return opening;}
+ async function diskGet(k){const d=await db();if(!d)return null;return new Promise(resolve=>{let done=false;const finish=v=>{if(done)return;done=true;clearTimeout(timer);resolve(v);};const timer=setTimeout(()=>finish(null),700);try{const t=d.transaction('data','readonly'),q=t.objectStore('data').get(k);q.onsuccess=()=>finish(q.result);q.onerror=()=>finish(null);}catch{finish(null);}});}
+ return {
+  async get(k){let value=memory.get(k)||await diskGet(k);if(!value||value.expires<Date.now())return null;remember(k,value);return value.data;},
+  async set(k,data,ttl=TTL){let size;try{size=data instanceof Blob?data.size:JSON.stringify(data).length*2;}catch{return;}if(size>16*1024*1024)return;const record={data,size,expires:Date.now()+ttl,used:Date.now()};remember(k,record);const d=await db();if(!d)return;
+   await new Promise(resolve=>{let done=false;const finish=()=>{if(done)return;done=true;clearTimeout(timer);resolve();};const timer=setTimeout(finish,700);try{const t=d.transaction(['data','meta'],'readwrite'),s=t.objectStore('data'),meta=t.objectStore('meta');s.put(record,k);meta.put({key:k,size,used:record.used},k);const q=meta.getAll();q.onsuccess=()=>{let entries=q.result.sort((a,b)=>a.used-b.used),n=entries.reduce((sum,x)=>sum+x.size,0);while((n>MAX||entries.length>64)&&entries.length){const first=entries.shift();s.delete(first.key);meta.delete(first.key);n-=first.size;}};t.oncomplete=t.onerror=t.onabort=finish;}catch{finish();}});
   }
-  send(onActivity,{status:'bytes',received,total,complete:true});
-  const bytes=new Uint8Array(received);let at=0;for(const buffer of buffers){bytes.set(buffer,at);at+=buffer.byteLength;}
-  // Yield once so the last progress message can reach the visible UI before parsing.
-  await new Promise(resolve=>setTimeout(resolve,0));
-  send(onActivity,{status:'parsing',received,total});
-  try{return JSON.parse(new TextDecoder().decode(bytes));}catch{throw Error('Kartendienst hat keine lesbare JSON-Antwort geliefert.');}
- }catch(error){if(!finished)stop();throw error;}finally{try{reader.releaseLock();}catch{}}
+ };
+}
+function splitBounds(b){const d=R.boundsInfo(b),c=R.project([b[0],b[1]]),e=R.project([b[2],b[3]]);if(d.w>=d.h){const x=R.unproject([(c[0]+e[0])/2,c[1]])[0];return [[b[0],b[1],x,b[3]],[x,b[1],b[2],b[3]]];}const y=R.unproject([c[0],(c[1]+e[1])/2])[1];return [[b[0],b[1],b[2],y],[b[0],y,b[2],b[3]]];}
+function initialParts(b){let parts=[b.slice()];while(parts.length<16){const at=parts.findIndex(p=>{const d=R.boundsInfo(p);return d.w*d.h>16e6;});if(at<0)break;parts.splice(at,1,...splitBounds(parts[at]));}return parts;}
+function mergeOSM(raws){const objects=new Map(),dates=[];for(const raw of raws){if(raw.osm3s?.timestamp_osm_base)dates.push(raw.osm3s.timestamp_osm_base);for(const e of raw.elements||[]){const id=e.type+'/'+e.id,old=objects.get(id);if(!old){objects.set(id,e);continue;}const og=old.geometry?.length||old.members?.length||0,ng=e.geometry?.length||e.members?.length||0;const richer=ng>og?e:old;objects.set(id,{...richer,tags:{...old.tags,...e.tags}});}}return {elements:[...objects.values()],osm3s:{timestamp_osm_base:dates.sort()[0]||null}};}
+// Dependency injection lets tests exercise actual network/caching code, not replace
+// the complete loader with a fake success function.
+function createDataLoader(options={}){
+ const cfg={headerMs:43000,poiMs:12000,idleMs:BODY_IDLE_MS,bodyMs:BODY_MAX_MS,sessionMs:180000,retryMs:800,maxRequests:40,...options.config};
+ const fetcher=options.fetch||((...a)=>fetch(...a)),cache=options.cache||createCache(),flights=new Map(),queue=[];
+ let active=0,preferred=0,cooldown=0;
+ function drain(){while(active<2&&queue.length){const job=queue.shift();job.signal?.removeEventListener('abort',job.cancel);if(job.signal?.aborted){job.reject(abortError());continue;}active++;Promise.resolve().then(job.work).then(job.resolve,job.reject).finally(()=>{active--;drain();});}}
+ function slot(signal,work){return new Promise((resolve,reject)=>{check(signal);const job={signal,work,resolve,reject};job.cancel=()=>{const i=queue.indexOf(job);if(i>=0)queue.splice(i,1);reject(abortError());};signal?.addEventListener('abort',job.cancel,{once:true});queue.push(job);drain();});}
+ function shared(key,signal,observer,work){
+  check(signal);let f=flights.get(key);if(f?.controller.signal.aborted){flights.delete(key);f=null;}
+  if(!f){f={controller:new AbortController(),subscribers:new Set()};flights.set(key,f);f.promise=Promise.resolve().then(()=>work(f.controller.signal,e=>{for(const s of f.subscribers)send(s.observer,e);})).finally(()=>{if(flights.get(key)===f)flights.delete(key);});f.promise.catch(()=>{});}
+  return new Promise((resolve,reject)=>{const sub={observer};let finished=false;const clean=()=>{f.subscribers.delete(sub);signal?.removeEventListener('abort',stop);};const stop=()=>{if(finished)return;finished=true;clean();if(!f.subscribers.size)f.controller.abort();reject(abortError());};f.subscribers.add(sub);signal?.addEventListener('abort',stop,{once:true});f.promise.then(value=>{if(finished)return;finished=true;clean();resolve(value);},e=>{if(finished)return;finished=true;clean();reject(e);});});
+ }
+ async function wire(url,params,signal,onActivity,headerMs=cfg.headerMs,limit=23000000){
+  const control=new AbortController(),stop=()=>control.abort();check(signal);signal?.addEventListener('abort',stop,{once:true});let headerTimedOut=false;const timer=setTimeout(()=>{headerTimedOut=true;control.abort();},headerMs);
+  try{const response=await fetcher(url,{...params,signal:control.signal});clearTimeout(timer);check(signal);
+   if(!response.ok){response.body?.cancel().catch(()=>{});if(response.status===429){const h=response.headers?.get('retry-after'),n=Number(h),until=Number.isFinite(n)&&h?Date.now()+n*1000:Date.parse(h||'');cooldown=Math.max(cooldown,Number.isFinite(until)?until:Date.now()+30000,Date.now()+30000);throw error('RATE_LIMIT',`Kartendienst begrenzt Anfragen. In ${Math.ceil((cooldown-Date.now())/1000)} s erneut versuchen; fertige Pakete bleiben erhalten.`,{retryAt:cooldown,status:429});}throw error(response.status>=500?'SERVER':'HTTP',`Kartendienst antwortet mit HTTP ${response.status}.`,{status:response.status});}
+   const result=await readJSONLimited(response,limit,cfg.idleMs,{signal:control.signal,onActivity,maxTime:cfg.bodyMs});
+   if(result.remark)throw error(/timed out|timeout|out of memory|memory/i.test(result.remark)?'QUERY_TIMEOUT':'INCOMPLETE','Kartendienst lieferte keine vollständigen Daten: '+String(result.remark).slice(0,180));
+   if(!Array.isArray(result.elements))throw error('FORMAT','Ungültige Kartendaten vom Server.');return result;
+  }catch(e){if(signal?.aborted)throw abortError();if(headerTimedOut)throw error('HEADER_TIMEOUT','Kartendienst hat noch keine Daten geliefert.');if(e instanceof TypeError)throw error('NETWORK','Verbindung zum Kartendienst unterbrochen.');throw e;}
+  finally{clearTimeout(timer);signal?.removeEventListener('abort',stop);control.abort();}
+ }
+ function keyFor(b,layer){return 'osm11:'+layer+':'+b.map(x=>x.toFixed(6)).join(',');}
+ async function getOSMLayer(b,signal,layer,onProgress,opts={}){
+  const key=keyFor(b,layer),phase=layer==='pois'?'pois':'base';check(signal);
+  if(!opts.refresh){const saved=await cache.get(key);check(signal);if(saved){send(onProgress,{phase,status:'cached',detail:'Datenpaket aus lokalem Speicher.'});return saved;}}
+  return shared((R.server?'server:':'public:')+key,signal,onProgress,async(signal,emit)=>{
+   // Shared across simultaneous same-area loads; successful package persists before
+   // the overall map completes, so retrying never discards already finished work.
+   let last;const attempts=layer==='pois'||R.server?1:2,startEndpoint=preferred;
+   for(let i=0;i<attempts;i++){
+    check(signal);if(Date.now()<cooldown)throw error('RATE_LIMIT',`Kartendienst-Pause: noch ${Math.ceil((cooldown-Date.now())/1000)} s. Bereits geladene Pakete bleiben gespeichert.`,{retryAt:cooldown});
+    const index=(startEndpoint+i)%OVERPASS.length,endpoint=OVERPASS[index];
+    emit({phase,status:'waiting',attempt:i+1,attempts,detail:i?'Anderer Datendienst nach Verbindungsfehler.':'Kleines Datenpaket wird angefragt; bisher keine Bytes.'});
+    try{
+     const value=await slot(signal,()=>wire(R.server?`api/map?bbox=${encodeURIComponent(b.join(','))}&layer=${layer}&mode=${opts.mode||'poster'}`:endpoint,R.server?{}:{method:'POST',body:new URLSearchParams({data:layer==='pois'?poiQuery(b):osmQuery(b,layer)})},signal,e=>emit({phase,layer,attempt:i+1,attempts,...e}),layer==='pois'?cfg.poiMs:cfg.headerMs,layer==='pois'?5000000:layer==='geometry'?8000000:23000000));
+     if(!R.server)preferred=index;await cache.set(key,value);check(signal);return value;
+    }catch(e){check(signal);last=e;if(['RATE_LIMIT','QUERY_TIMEOUT','SIZE','INCOMPLETE','HTTP'].includes(e.code)||i+1===attempts)break;emit({phase,status:'retry',detail:e.message+' Ein begrenzter Wiederholungsversuch folgt.'});await pause(cfg.retryMs,signal);}
+   }
+   throw last||Error('Kartendienst nicht verfügbar.');
+  });
+ }
+ async function geometryTask(b,signal,onProgress,ctx,depth=0){
+  const planKey='plan:'+keyFor(b,'geometry');let plan=ctx.refresh?null:await cache.get(planKey);check(signal);
+  if(plan&&depth<2){ctx.total++;return mergeOSM(await Promise.all(plan.map(p=>geometryTask(p,signal,onProgress,ctx,depth+1))));}
+  try{if(++ctx.requests>cfg.maxRequests)throw error('BUDGET','Zu viele Wiederholungen. Fertige Pakete sind gespeichert; bitte erneut laden.');const raw=await getOSMLayer(b,signal,'geometry',onProgress,ctx);ctx.done++;send(onProgress,{phase:'base',status:'part',done:ctx.done,total:ctx.total,detail:`${ctx.done} von ${ctx.total} Kartenpaketen vollständig geladen.`});return raw;}
+  catch(e){check(signal);const d=R.boundsInfo(b);if(['QUERY_TIMEOUT','SIZE'].includes(e.code)&&depth<2&&Math.min(d.w,d.h)>300){plan=splitBounds(b);await cache.set(planKey,plan);ctx.total++;send(onProgress,{phase:'base',status:'part',done:ctx.done,total:ctx.total,detail:'Dichtes Gebiet wird in zwei kleinere Pakete aufgeteilt. Fertige Daten bleiben erhalten.'});return mergeOSM(await Promise.all(plan.map(p=>geometryTask(p,signal,onProgress,ctx,depth+1))));}throw e;}
+ }
+ async function loadMap(bounds,{signal,onProgress,refresh=false,terrainRequired=true,mode='model'}={}){
+  R.validateBounds(bounds,mode);check(signal);const control=new AbortController(),stop=()=>control.abort(),started=Date.now();signal?.addEventListener('abort',stop,{once:true});let expired=false;const deadline=setTimeout(()=>{expired=true;stop();},cfg.sessionMs);
+  const local=control.signal,parts=initialParts(bounds),ctx={done:0,total:parts.length+1,requests:0,mode,refresh};
+  const placeholder={cols:2,rows:2,values:[0,0,0,0],available:false,source:'Nicht geladen – reines 2D-Poster'};
+  // Heights are independent; any failed height load must not erase raw OSM cache.
+  const terrainPromise=terrainRequired?terrainData(bounds,local,onProgress,cache,refresh).then(value=>({value}),e=>({error:e})):Promise.resolve({value:placeholder});
+  try{
+   send(onProgress,{phase:'base',status:'part',done:0,total:ctx.total,detail:`${ctx.total} überschaubare Kartenpakete; maximal zwei Anfragen gleichzeitig.`});
+   const geoPromise=Promise.all(parts.map(b=>geometryTask(b,local,onProgress,ctx)));
+   const relPromise=getOSMLayer(bounds,local,'relations',onProgress,{mode,refresh}).then(raw=>{ctx.done++;send(onProgress,{phase:'base',status:'part',done:ctx.done,total:ctx.total,detail:`${ctx.done} von ${ctx.total} Kartenpaketen vollständig geladen.`});return raw;});
+   const [geometry,relations]=await Promise.all([geoPromise,relPromise]);check(local);
+   const raw=mergeOSM([...geometry,relations]);send(onProgress,{phase:'base',status:'done',count:raw.elements.length,detail:'Alle erforderlichen Kartenpakete geladen.'});
+   // POIs are optional: one bounded request, no two 45-second fallback waits.
+   const optional=new AbortController(),cancelOptional=()=>optional.abort();local.addEventListener('abort',cancelOptional,{once:true});const poiTimer=setTimeout(cancelOptional,cfg.poiMs);let poi,warnings=[];
+   try{poi=await getOSMLayer(bounds,optional.signal,'pois',onProgress,{mode,refresh});send(onProgress,{phase:'pois',status:'done',count:poi.elements.length,detail:'Historische Orte geladen.'});}
+   catch(e){check(local);warnings.push('Zusätzliche historische Orte konnten nicht geladen werden. Die vollständigen Gebäude, Straßen und Wasserflächen bleiben nutzbar; erneutes Laden ergänzt fehlende Marker aus dem Cache.');send(onProgress,{phase:'pois',status:'skipped',detail:'Zusätzliche Marker vorerst übersprungen – Karte bleibt nutzbar.'});}
+   finally{clearTimeout(poiTimer);local.removeEventListener('abort',cancelOptional);optional.abort();}
+   const height=await terrainPromise;if(height.error)throw error('TERRAIN','Geländedaten: '+height.error.message+' Die Kartendaten wurden für den nächsten Versuch gespeichert.');check(local);
+   send(onProgress,{phase:'process',status:'working',detail:'Vollständige Kartenpakete werden zusammengeführt.'});await pause(0,local);
+   const features=R.parseOSM(mergeOSM([raw,poi||{elements:[]}]),bounds);check(local);
+   const data={version:2,coastlineVersion:8,bounds:bounds.slice(),terrain:height.value,...features,capturedAt:new Date().toISOString(),osmTimestamp:raw.osm3s?.timestamp_osm_base||null,source:'OpenStreetMap contributors · ODbL 1.0',realData:true,loadStats:{packages:ctx.done,requests:ctx.requests,durationMs:Date.now()-started},loaderVersion:11};
+   data.warnings.push(...warnings);if(!features.buildings.length)data.warnings.push('Keine Gebäude im geladenen Ausschnitt erfasst.');send(onProgress,{phase:'process',status:'done',count:data.buildings.length,detail:'Karte vollständig aufbereitet.'});return data;
+  }catch(e){stop();if(expired&&!signal?.aborted)throw error('DEADLINE','Gesamtzeit erreicht. Vollständige Datenpakete sind gespeichert; „Erneut versuchen“ lädt nur Fehlendes.');if(signal?.aborted)throw abortError();throw e;}
+  finally{clearTimeout(deadline);signal?.removeEventListener('abort',stop);}
+ }
+ return {loadMap,getOSMLayer,cache,diagnostics:()=>({active,queued:queue.length,inFlight:flights.size,cooldownUntil:cooldown})};
 }
 async function searchPlace(q,signal){
  const query=String(q).trim().slice(0,140);if(query.length<2)throw Error('Bitte mindestens zwei Zeichen eingeben.');
  const url=R.server?`api/search?q=${encodeURIComponent(query)}`:`https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=6&lang=de`;
- const json=await readJSONLimited(await request(url,{signal},20000),1_000_000,20000);
+ const json=await readJSONLimited(await request(url,{signal},20000),1_000_000,20000,{signal});
  return (json.features||[]).map(f=>({lon:f.geometry.coordinates[0],lat:f.geometry.coordinates[1],name:f.properties.name||f.properties.city||query,label:[f.properties.name,f.properties.city,f.properties.state,f.properties.country].filter((x,i,a)=>x&&a.indexOf(x)===i).join(' · '),region:f.properties.state||'',country:f.properties.country||'',countryCode:String(f.properties.countrycode||'').toUpperCase()}));
 }
 async function reverseRegion(lon,lat,code='',signal){
  if(!Number.isFinite(lon)||!Number.isFinite(lat))throw Error('Koordinaten sind ungültig.');
  const lang=String(code).toUpperCase()==='DE'?'de':'en';
  const url=R.server?`api/reverse?lon=${encodeURIComponent(lon)}&lat=${encodeURIComponent(lat)}&lang=${lang}`:`https://photon.komoot.io/reverse?lon=${encodeURIComponent(lon)}&lat=${encodeURIComponent(lat)}&limit=8&lang=${lang}`;
- const json=await readJSONLimited(await request(url,{signal},15000),1000000,15000);
+ const json=await readJSONLimited(await request(url,{signal},15000),1000000,15000,{signal});
  const features=(json.features||[]).filter(f=>f?.properties?.state||f?.properties?.countrycode);
  const first=features.find(f=>f.properties.state&&f.properties.countrycode)||features[0];
  if(!first)throw Error('Der Ort konnte keiner Region zugeordnet werden. Bitte Region manuell eintragen.');
  return {region:first.properties.state||'',countryCode:String(first.properties.countrycode||code||'').toUpperCase(),country:first.properties.country||''};
 }
-async function getOSMLayer(b,signal,layer,onProgress){
- const isPOI=layer==='pois',phase=isPOI?'pois':'base',timeout=isPOI?45000:58000,query=isPOI?poiQuery(b):osmQuery(b);
- const paths=R.server?[`api/map?bbox=${encodeURIComponent(b.join(','))}&layer=${layer}`]:OVERPASS;
- let last;
- for(let attempt=0;attempt<paths.length;attempt++){
-  if(signal?.aborted)throw abortError();
-  send(onProgress,{phase,status:'waiting',attempt:attempt+1,attempts:paths.length,detail:attempt?'Alternativer Dienst – warte auf Antwort':'Kartendienst berechnet die Anfrage; bisher noch keine empfangenen Bytes.'});
-  try{
-   const response=await request(paths[attempt],R.server?{signal}:{method:'POST',body:new URLSearchParams({data:query}),signal},timeout);
-   const result=await readJSONLimited(response,isPOI?5_000_000:23_000_000,BODY_IDLE_MS,{signal,onActivity:activity=>send(onProgress,{phase,attempt:attempt+1,attempts:paths.length,...activity})});
-   if(!Array.isArray(result.elements)||result.remark)throw Error('Der Datendienst hat die Anfrage nicht vollständig verarbeitet: '+String(result.remark||'Ungültige Antwort').slice(0,175));
-   send(onProgress,{phase,status:'done',count:result.elements.length,detail:`${result.elements.length.toLocaleString('de-DE')} Kartenobjekte empfangen.`});
-   return result;
-  }catch(e){if(signal?.aborted)throw abortError();last=e;
-   send(onProgress,{phase,status:'retry',detail:e.message+' '+(attempt+1<paths.length?'Wechsle zu einem alternativen Datendienst.':'')});
-   // A rate limit must not trigger another immediate query against public servers.
-   if(/429|Zu viele Anfragen|Obergrenze|zu viele Kartendaten/i.test(e.message))break;
-  }
- }
- throw last||Error('Kein OpenStreetMap-Dienst erreichbar.');
-}
 function tileXY(lon,lat,z){const k=2**z,p=R.project([lon,lat]),extent=Math.PI*6378137;return [(p[0]+extent)/(2*extent)*k,(extent-p[1])/(2*extent)*k];}
-async function terrainData(bounds,signal,onProgress){
+async function terrainData(bounds,signal,onProgress,cache,refresh=false){
  const info=R.boundsInfo(bounds),cols=R.clamp(Math.round(info.w/25)+1,65,257),rows=R.clamp(Math.round(info.h/25)+1,65,257);
  let z=14,a,b;do{a=tileXY(bounds[0],bounds[3],z);b=tileXY(bounds[2],bounds[1],z);if((Math.floor(b[0])-Math.floor(a[0])+1)*(Math.floor(b[1])-Math.floor(a[1])+1)<=48)break;z--;}while(z>9);
  const jobs=[];for(let y=Math.floor(a[1]);y<=Math.floor(b[1]);y++)for(let x=Math.floor(a[0]);x<=Math.floor(b[0]);x++)jobs.push([x,y]);
  const tiles=new Map();let next=0,done=0;send(onProgress,{phase:'terrain',status:'tiles',done:0,total:jobs.length,detail:`${jobs.length} Höhenkacheln zu laden`});
- const work=async()=>{while(next<jobs.length){if(signal?.aborted)throw abortError();const [x,y]=jobs[next++],url=R.server?`api/terrain/${z}/${x}/${y}.png`:`https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${x}/${y}.png`,response=await request(url,{signal},25000),blob=await response.blob();
+ const work=async()=>{while(next<jobs.length){if(signal?.aborted)throw abortError();const [x,y]=jobs[next++],url=R.server?`api/terrain/${z}/${x}/${y}.png`:`https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${x}/${y}.png`,tileKey=`terrain11:${z}/${x}/${y}`;let blob=refresh?null:await cache?.get(tileKey);check(signal);if(!blob){const response=await request(url,{signal},25000);blob=new Blob([await readBytes(response,1000000,15000,{signal,maxTime:45000})],{type:'image/png'});await cache?.set(tileKey,blob,7*24*3600000);}check(signal);
   let image;if(typeof createImageBitmap==='function')image=await createImageBitmap(blob);else image=await new Promise((resolve,reject)=>{const im=new Image(),u=URL.createObjectURL(blob);im.onload=()=>{URL.revokeObjectURL(u);resolve(im);};im.onerror=()=>{URL.revokeObjectURL(u);reject(Error('Höhenbild ist nicht lesbar.'));};im.src=u;});
   const canvas=document.createElement('canvas');canvas.width=256;canvas.height=256;const ctx=canvas.getContext('2d',{willReadFrequently:true});ctx.drawImage(image,0,0);const rgba=ctx.getImageData(0,0,256,256).data;image.close?.();const h=new Float32Array(65536);for(let i=0;i<h.length;i++)h[i]=rgba[i*4]*256+rgba[i*4+1]+rgba[i*4+2]/256-32768;tiles.set(x+','+y,h);done++;send(onProgress,{phase:'terrain',status:'tiles',done,total:jobs.length,detail:`${done} von ${jobs.length} Höhenkacheln empfangen`});
  }};
@@ -122,33 +183,6 @@ async function terrainData(bounds,signal,onProgress){
  }
  return {cols,rows,values,zoom:z,spacing:Math.max(info.w/(cols-1),info.h/(rows-1)),source:'Mapzen / AWS Terrain Tiles (Terrarium)',attribution:'https://github.com/tilezen/joerd/blob/master/docs/attribution.md',tileCount:jobs.length};
 }
-async function loadMap(bounds,{signal,onProgress,refresh=false,terrainRequired=true,mode='model'}={}){
- R.validateBounds(bounds,mode);const key='map:v10:'+bounds.map(x=>x.toFixed(5)).join(',')+(terrainRequired?'':':poster-2d');
- if(!refresh){const cached=await cacheGet(key);if(cached){send(onProgress,{phase:'cache',status:'done',detail:'Gespeicherte Kartendaten vollständig geladen.'});return cached;}}
- const internal=new AbortController(),cancel=()=>internal.abort();if(signal?.aborted)throw abortError();signal?.addEventListener('abort',cancel,{once:true});
- const placeholder={cols:2,rows:2,values:[0,0,0,0],available:false,source:'Nicht geladen – reines 2D-Poster'};
- // Terrain may transfer in parallel, making progress visible while Overpass computes.
- const terrainPromise=terrainRequired?terrainData(bounds,internal.signal,onProgress).then(value=>({value}),error=>({error})):Promise.resolve({value:placeholder});
- const warnings=[];
- try{
-  const raw=await getOSMLayer(bounds,internal.signal,'base',onProgress).catch(e=>{throw Error('OpenStreetMap: '+e.message);});
-  // Historical POIs are optional. Missing POIs must never discard usable geometry.
-  let poi;
-  try{poi=await getOSMLayer(bounds,internal.signal,'pois',onProgress);}
-  catch(e){if(internal.signal.aborted)throw abortError();warnings.push('Zusätzliche historische Orte konnten nicht geladen werden: '+e.message+' Die Straßen und Gebäude sind verfügbar.');send(onProgress,{phase:'pois',status:'skipped',detail:'Sehenswürdigkeiten aktuell nicht erreichbar – Karte bleibt verfügbar.'});}
-  const height=await terrainPromise;if(height.error)throw Error('Geländedaten: '+height.error.message);
-  if(internal.signal.aborted)throw abortError();
-  send(onProgress,{phase:'process',status:'working',detail:'Kartengeometrie und Wasserflächen werden verarbeitet.'});
-  const seen=new Set(raw.elements.map(e=>e.type+'/'+e.id));
-  const extras=(poi?.elements||[]).filter(e=>!seen.has(e.type+'/'+e.id));
-  const combined={...raw,elements:raw.elements.concat(extras)};
-  const features=R.parseOSM(combined,bounds),data={version:2,coastlineVersion:8,bounds,terrain:height.value,...features,capturedAt:new Date().toISOString(),osmTimestamp:raw.osm3s?.timestamp_osm_base||null,source:'OpenStreetMap contributors · ODbL 1.0',realData:true};
-  data.warnings.push(...warnings);
-  if(!features.buildings.length)features.warnings.push('Keine Gebäude in diesem Ausschnitt vorhanden.');
-  if(R.boundsInfo(bounds).w*R.boundsInfo(bounds).h>80e6)features.warnings.push('Großer Ausschnitt: öffentliche Overpass-Dienste können den Abruf ablehnen. Für Produktion eigenen OSM-Dienst verwenden.');
-  send(onProgress,{phase:'process',status:'done',count:data.buildings.length,detail:`${data.buildings.length.toLocaleString('de-DE')} Gebäude verarbeitet.`});
-  await cacheSet(key,data,warnings.length?15*60000:72*3600000);return data;
- }catch(e){cancel();throw e;}finally{signal?.removeEventListener('abort',cancel);}
-}
-Object.assign(R,{request,osmQuery,poiQuery,getOSMLayer,searchPlace,reverseRegion,loadMap,tileXY,readJSONLimited,server:false});
+const loader=createDataLoader();
+Object.assign(R,{request,osmQuery,poiQuery,searchPlace,reverseRegion,tileXY,readJSONLimited,createDataLoader,mergeOSM,splitBounds,loadMap:loader.loadMap,getOSMLayer:loader.getOSMLayer,loaderDiagnostics:loader.diagnostics,server:false});
 })(globalThis.RS);

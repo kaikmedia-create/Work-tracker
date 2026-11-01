@@ -70,12 +70,14 @@ function updateStepUI(){
  const index=Math.max(0,flow().indexOf(currentPanel));$('step-counter').textContent=`Schritt ${index+1} von 4`;
  $('step-summary').textContent=(settings.mode==='poster'?['Ort & Ausschnitt','Farben & Straßen','Schrift & Komposition','Posterdatei']:['Ort & Ausschnitt','Höhen & Druckmaße','Farben & Details','Druckmodell'])[index];
  $('step-back').textContent=index===0?'← Auswahl':'← Zurück';
- $('step-next').textContent=index===3?(settings.mode==='poster'?'Poster vorbereiten ↗':'3MF herunterladen ↓'):index===0&&(!data||stale()||needsTerrain())?'Karte laden & weiter →':'Weiter →';
+ $('export-poster').textContent=R.triptychEditing?'Stadt für Kombi übernehmen →':'Poster vorbereiten ↗';
+ $('step-next').textContent=index===3&&R.triptychEditing?'Stadt für Kombi übernehmen →':index===3?(settings.mode==='poster'?'Poster vorbereiten ↗':'3MF herunterladen ↓'):index===0&&(!data||stale()||needsTerrain())?'Karte laden & weiter →':'Weiter →';
  const reason=index===3?(settings.mode==='poster'?commonReason():modelReason()):abort?'Die Karte wird geladen. Bitte den Abruf abschließen oder abbrechen.':exporting?'Die Exportdatei wird vorbereitet.':index>0?commonReason():'';
  availability('step-next',reason);availability('step-back',abort||exporting?'Während des Ladens oder Exports ist der Moduswechsel gesperrt.':'');
  $('step-hint').textContent=reason||(index===0?'Die Auswahl lässt sich über Maße, Ecken und Verschieben ändern.':index===3?'Du prüfst das Ergebnis vor dem Druck.':settings.mode==='poster'?'Änderungen erscheinen direkt in der Postervorschau.':'Änderungen werden im 3D-Modell neu berechnet.');
 }
 function showChoice(){
+ if(R.triptychEditing&&R.TriptychUI){R.TriptychUI.cancelEdit();return;}
  if(abort||exporting){explain('Bitte den laufenden Abruf oder Export zuerst beenden.');return;}
  started=false;$('welcome').hidden=false;document.querySelector('.workspace').hidden=true;document.body.dataset.mode='choose';
  for(const id of ['switch-mode','export-top','save-project'])$(id).hidden=true;
@@ -245,9 +247,11 @@ function progress(event,value){
  if(phase&&phase in loadStates){loadStates[phase]=status==='done'?'done':status==='skipped'?'skipped':status||'waiting';refreshLoadSteps();}
  if(detail)$('loader-detail').textContent=detail;
  if(phase&&loadStepLabels[phase])$('loader-stage').textContent=loadStepLabels[phase];
+ if(phase==='base'&&status==='part'){lastBytesAt=done>0?Date.now():lastBytesAt;$('loader-percent').textContent=done+' / '+total+' Kartenpakete';$('loader-text').textContent=detail;$('progress').removeAttribute('value');return;}
  if(phase==='base'||phase==='pois'){
   if(status==='bytes'&&received>0){lastBytesAt=Date.now();$('loader-detail').textContent='Der Server liefert Kartendaten. Die Übertragung läuft.';const mb=n=>(n/1024/1024).toLocaleString('de-DE',{maximumFractionDigits:2});$('loader-percent').textContent=total>0?Math.min(100,Math.round(received/total*100))+' % Datenübertragung':'Datenübertragung';$('loader-text').textContent=mb(received)+' MB empfangen'+(total?' / '+mb(total)+' MB':' (Gesamtgröße unbekannt)');if(total>0)$('progress').value=Math.min(1,received/total);else $('progress').removeAttribute('value');}
   else if(status==='waiting'||status==='retry'){$('progress').removeAttribute('value');$('loader-percent').textContent='Warten · keine Prozentangabe';$('loader-text').textContent='Warte auf Antwort des OpenStreetMap-Dienstes';}
+  else if(status==='cached'){$('loader-percent').textContent='Paket aus Cache';$('loader-text').textContent=detail;$('progress').removeAttribute('value');}
   else if(status==='headers'){$('progress').removeAttribute('value');$('loader-percent').textContent='Antwort eingetroffen';}
   else if(status==='parsing'){$('loader-percent').textContent='Daten werden geprüft';$('progress').removeAttribute('value');}
   else if(status==='done'){$('loader-percent').textContent=(count||0).toLocaleString('de-DE')+' Objekte';$('progress').value=1;}
@@ -266,19 +270,20 @@ async function load(){
   if(controller.signal.aborted||epoch!==loadEpoch)return;
   const custom=(data?.landmarks||[]).filter(x=>x.source==='manual');
   if(data&&custom.length&&data.bounds.every((v,i)=>Math.abs(v-selected[i])<1e-5))loaded.landmarks.push(...custom);
-  data=loaded;mesh=null;settings.landmarkOverrides={};landmarkControls();markerControls();
+  const sameLoadedArea=data&&data.bounds.every((v,i)=>Math.abs(v-selected[i])<1e-5);data=loaded;mesh=null;if(!sameLoadedArea)settings.landmarkOverrides={};landmarkControls();markerControls();
   if(settings.autoSubtitle)resolveRegion();
   if(settings.mode==='model'){progress('Geschlossenes Relief wird berechnet',.92);await build();if(!mesh){panel('model');quality();return;}}
   panel(settings.mode==='poster'?'style':'model');quality();preview();
   const coastWarnings=(data.warnings||[]).filter(w=>/Küste|Küsten|Meer|Meeresfläche/.test(w));
   const historicWarnings=(data.warnings||[]).filter(w=>/historische Orte|Sehenswürdigkeiten/i.test(w));
   notify(`${number(data.buildings.length,0)} Gebäude und ${number(data.roads.length,0)} Straßen-/Wasserlinien geladen.${data.terrain.available===false?' Für dieses 2D-Poster wurde kein Gelände benötigt.':' Echtes Gelände ist enthalten.'} ${coastWarnings.length?coastWarnings.slice(0,2).join(' '):historicWarnings.length?historicWarnings[0]:'Projekt über „Speichern“ sichern.'}`,coastWarnings.length||historicWarnings.length?'warning':'success');
- }catch(e){controller.abort();if(e.name==='AbortError')notify('Laden abgebrochen. Deine vorherigen Kartendaten bleiben erhalten.','info');else notify('Karte konnte nicht geladen werden: '+e.message+' Bitte erneut versuchen, einen kleineren Ausschnitt wählen oder eine gespeicherte Projektdatei öffnen.','error',{label:'Erneut versuchen',run:load});}
+ }catch(e){controller.abort();if(e.name==='AbortError')notify('Laden abgebrochen. Deine vorherigen Kartendaten bleiben erhalten.','info');else notify('Karte konnte nicht geladen werden: '+e.message+' Bereits vollständig geladene Pakete bleiben für „Erneut versuchen“ erhalten.','error',{label:'Erneut versuchen',run:()=>{$('force-refresh').checked=false;load();}});}
  finally{if(epoch===loadEpoch){abort=null;clearInterval(loadClock);loadClock=null;$('loader').hidden=true;labels();}}
 }
 function download(blob,name){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),45000);}
 function slug(){return (settings.title||'karte').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9-]+/g,'-').replace(/^-|-$/g,'').toLowerCase()||'karte';}
 async function prepareExport(){
+ if(R.triptychEditing){return R.TriptychUI.accept();}
  const blocked=commonReason();if(blocked){explain(blocked);return;}exporting=true;labels();$('loader').hidden=false;$('loader-title').textContent='Druckdatei wird vorbereitet.';$('cancel-load').hidden=true;$('loader-phases').replaceChildren();$('loader-idle').textContent='Der Export wird lokal berechnet.';$('loader-overall').textContent='Exportvorgang';$('loader-elapsed').textContent='';availability('export-poster','Die Druckdatei wird vorbereitet.');await nextFrame();
  try{const result=await R.exportPoster(data,settings,progress);const name=`${slug()}-${settings.paperW}x${settings.paperH}mm${result.dpi?'-'+Math.round(result.dpi)+'dpi':''}.${result.extension}`;pendingExport={...result,name};$('export-result').textContent=result.summary;$('export-filename').textContent=name;$('export-details').textContent=`${number(result.blob.size,0)} von 8.000.000 Byte · ${result.vector?'RGB · Vektor':'RGB · Rasterbild'}`;$('file-icon').textContent=result.extension.toUpperCase();$('export-warnings').replaceChildren();
  const warnings=[...result.warnings];if(stale())warnings.push('Der geänderte Ausschnitt wurde noch nicht geladen. Diese Datei verwendet die zuletzt geladenen Kartendaten.');for(const text of warnings){const p=document.createElement('p');p.className='warning';p.textContent=text;$('export-warnings').append(p);}$('export-dialog').showModal();}
@@ -345,7 +350,7 @@ $('save-project').onclick=()=>{if(!data)return;const { _contours,...saved}=data;
 $('open-project').onclick=()=>$('project-file').click();$('project-file').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;try{if(f.size>35000000)throw Error('Projektdatei ist größer als 35 MB.');const p=R.validateProject(JSON.parse(await f.text()));abort?.abort();settings=p.settings;data=p.data;locationEpoch++;bounds=data.bounds.slice();const info=R.boundsInfo(bounds);Object.assign(settings,{lon:+info.lon.toFixed(6),lat:+info.lat.toFixed(6),widthKm:+(info.w/1000).toFixed(3),heightKm:+(info.h/1000).toFixed(3)});mesh=null;buildId++;building=false;map.setBounds(bounds,true);landmarkControls();markerControls();chooseMode(settings.mode);if(settings.autoSubtitle)resolveRegion();if(settings.mode==='model'&&!building&&!mesh)await build();preview();quality();notify('Projekt und enthaltene Kartendaten geöffnet. Gespeicherter Modus: '+(settings.mode==='poster'?'Poster.':'3D-Relief.'),'success');}catch(e){notify('Import: '+e.message,'error');}};
 $('new-project').onclick=()=>{if(data&&!confirm('Neues Projekt starten? Ungespeicherte Änderungen gehen verloren.'))return;abort?.abort();data=mesh=null;buildId++;building=false;locationEpoch++;settings=R.cleanSettings();bounds=R.boundsFor(settings.lon,settings.lat,settings.widthKm,settings.heightKm);map.setBounds(bounds,true);$('model-empty').hidden=false;$('poster-empty').hidden=false;controls();persist();quality();landmarkControls();markerControls();panel('place');view('area');showChoice();};
 $('quality-toggle').onclick=()=>{$('quality-panel').hidden=!$('quality-panel').hidden;quality();};$('help').onclick=()=>$('help-dialog').showModal();$('close-help').onclick=()=>$('help-dialog').close();
-if(globalThis.RELIEF_SOURCE_FILES){$('download-code').hidden=false;$('download-code').onclick=()=>download(R.zip(globalThis.RELIEF_SOURCE_FILES),'relief-studio-source.zip');}
+if(globalThis.RELIEF_SOURCE_FILES){$('download-code').hidden=false;$('download-code').onclick=async()=>{try{const files={...globalThis.RELIEF_SOURCE_FILES};notify('Quellcode und PDF-Module werden zusammengestellt.');for(const name of ['pdf-lib.min.js','pdf.mjs','pdf.worker.mjs','pdf-lib-LICENSE.md','pdfjs-LICENSE.txt']){const response=await fetch('vendor12/'+name);if(!response.ok)throw Error('PDF-Modul nicht erreichbar: '+name);files['public/vendor12/'+name]=await response.text();}download(R.zip(files),'relief-studio-12-source.zip');}catch(e){notify('Quellcode-Download: '+e.message,'error');}};}
 if(globalThis.RELIEF_STATIC_PREVIEW){$('access-note').hidden=false;$('access-note').textContent='Private Vorschau mit PIN · statische Verschlüsselung, kein serverseitiger Zugangsschutz. Keine vertraulichen Kundendaten hinterlegen.';}
 // Workflow controls are deliberately separate from output-format controls.
 all('[data-mode-choice]').forEach(b=>b.onclick=()=>chooseMode(b.dataset.modeChoice));
@@ -362,5 +367,21 @@ window.addEventListener('offline',()=>notify('Du bist offline. Gespeicherte Proj
 
 if(!globalThis.RELIEF_STATIC_PREVIEW&&location.protocol!=='file:')fetch('api/status',{signal:AbortSignal.timeout(2500),headers:{Accept:'application/json'}}).then(r=>r.ok?r.json():null).then(j=>{if(j?.application==='relief-studio'&&j.server===true){R.server=true;$('logout-form').hidden=false;}}).catch(()=>{});
 // Diagnostics are local only. The interface exposes no credentials or remote administration.
-Object.defineProperty(globalThis,'ReliefStudio',{value:{get settings(){return {...settings};},get data(){return data;},get mesh(){return mesh;},get building(){return building;},view,exportPoster:()=>R.exportPoster(data,settings),get mode(){return settings.mode;},get started(){return started;},get panel(){return currentPanel;},version:'10.0.0'}});
+// Explicit integration boundary; triptych never reads or changes credentials.
+R.triptychBridge={
+ busy:()=>!!abort||exporting||building,
+ captureState:()=>({settings:structuredClone(settings),data,bounds:bounds.slice()}),
+ project:()=>{const reason=commonReason();if(reason)throw Error(reason);const {_contours,...saved}=data;return structuredClone({version:3,settings,data:saved});},
+ editing:flag=>{R.triptychEditing=!!flag;updateStepUI();},
+ begin:(project,format)=>{
+  if(abort||exporting)throw Error('Bitte zuerst den laufenden Vorgang beenden.');
+  searchAbort?.abort();clearTimeout(buildTimer);buildId++;building=false;mesh=null;locationEpoch++;
+  if(project){const p=R.validateProject(structuredClone(project));settings=R.cleanSettings({...p.settings,mode:'poster'});data=p.data;bounds=data.bounds.slice();}
+  else{settings=R.cleanSettings({...settings,...format,paper:'custom',title:'',subtitle:'',caption:'',countryCode:'',region:'',countryName:'',autoSubtitle:true,mode:'poster',contours:false,hillshade:false,landmarkOverrides:{}});data=null;bounds=R.boundsFor(settings.lon,settings.lat,settings.widthKm,settings.heightKm);}
+  R.triptychEditing=true;$('notice').hidden=true;map.setBounds(bounds,true);landmarkControls();markerControls();chooseMode('poster');quality();panel(project?'text':'place');
+ },
+ restoreState:state=>{R.triptychEditing=false;clearTimeout(buildTimer);buildId++;building=false;mesh=null;locationEpoch++;if(state){settings=R.cleanSettings(state.settings);data=state.data;bounds=state.bounds.slice();map.setBounds(bounds,true);controls();landmarkControls();markerControls();quality();}},
+ home:()=>showChoice()
+};
+Object.defineProperty(globalThis,'ReliefStudio',{value:{get settings(){return {...settings};},get data(){return data;},get mesh(){return mesh;},get building(){return building;},view,exportPoster:()=>R.exportPoster(data,settings),get mode(){return settings.mode;},get started(){return started;},get panel(){return currentPanel;},version:'12.0.0'}});
 })(globalThis.RS);
