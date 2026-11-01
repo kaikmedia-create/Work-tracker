@@ -1,10 +1,17 @@
 {
-  "version": "10.0.0",
-  "target": "github-pages",
+  "version": "11.0.0",
   "account": "kaikmedia-create",
   "repository": "kaikmedia-create/Work-tracker",
   "folder": "relief-studio",
+  "target": "github-pages",
+  "code_commit": "82b0ab54200ce3185f265143dd1e1238db336c9e",
   "base_url": "https://kaikmedia-create.github.io/Work-tracker/relief-studio/",
-  "gating": "static encrypted AES-GCM bundle, not secure authentication",
-  "notes": "Separated OSM base and optional historical POIs; real measured download progress with idle-aware bounded timeouts; 3-color vector branding"
+  "entry": "index.html",
+  "gate": "gate-v11.js",
+  "base_package": "bundle10.json",
+  "update": "upgrade11.json",
+  "update_sha256": "e0905f96144bc0a3e9933153e86604ffc83f908168f9cb6f4accf1e49eae1031",
+  "gating": "static preview PIN; not server-side authentication",
+  "source_in_repository": "Version-10 baseline plus checked Version-11 delta; run source/tools/apply_release11.py",
+  "source_in_download": "Version-11 source already applied"
 }
