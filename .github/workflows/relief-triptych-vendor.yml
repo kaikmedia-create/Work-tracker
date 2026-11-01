@@ -1,0 +1,34 @@
+name: Relief triptych dependencies
+on:
+  push:
+    branches: ['relief-studio/triptych-v12']
+    paths: ['.github/workflows/relief-triptych-vendor.yml']
+permissions:
+  contents: read
+jobs:
+  vendor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Download pinned packages without install scripts
+        run: |
+          mkdir -p vendor packages
+          cd packages
+          npm pack pdf-lib@1.17.1 --ignore-scripts
+          npm pack pdfjs-dist@4.10.38 --ignore-scripts
+          mkdir lib js
+          tar -xzf pdf-lib-1.17.1.tgz -C lib
+          tar -xzf pdfjs-dist-4.10.38.tgz -C js
+          cp lib/package/dist/pdf-lib.min.js ../vendor/pdf-lib.min.js
+          cp lib/package/LICENSE.md ../vendor/pdf-lib.LICENSE.txt
+          cp js/package/build/pdf.min.mjs ../vendor/pdf.min.mjs
+          cp js/package/build/pdf.worker.min.mjs ../vendor/pdf.worker.min.mjs
+          cp js/package/LICENSE ../vendor/pdfjs.LICENSE.txt
+          cd ../vendor
+          sha256sum * > SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: relief-pdf-vendor
+          path: vendor/
+          retention-days: 7
+          if-no-files-found: error
