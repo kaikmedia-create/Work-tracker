@@ -1,0 +1,25 @@
+name: Relief triptych dependency verification
+on:
+  push:
+    branches: [relief-studio-12-triptych]
+    paths: [.github/workflows/relief-triptych-dependencies.yml]
+permissions:
+  contents: read
+jobs:
+  vendor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fetch pinned PDF library without running package scripts
+        run: |
+          npm pack pdf-lib@1.17.1 --ignore-scripts
+          mkdir -p vendor
+          tar -xzf pdf-lib-1.17.1.tgz package/dist/pdf-lib.min.js package/LICENSE.md
+          cp package/dist/pdf-lib.min.js vendor/pdf-lib-1.17.1.min.js
+          cp package/LICENSE.md vendor/pdf-lib-LICENSE.md
+          sha256sum vendor/* > vendor/SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: relief-triptych-pdf-library
+          path: vendor/
+          retention-days: 7
