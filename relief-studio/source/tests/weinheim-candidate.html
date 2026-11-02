@@ -1,0 +1,26 @@
+<!doctype html><html lang="de"><meta charset="utf-8"><meta name="robots" content="noindex"><title>Weinheim live candidate</title><style>body{font:15px system-ui;margin:16px}iframe{width:100%;height:900px;border:1px solid #ddd}pre{white-space:pre-wrap;overflow-wrap:anywhere}</style><h1>Weinheim – vollständiger Modell- und Exporttest</h1><strong id="state">LAEUFT</strong><pre id="result"></pre><pre id="diagnostic"></pre><button id="project" hidden>Testprojekt speichern</button><iframe id="test" title="Echter Weinheim-Test"></iframe><script>
+const params=new URLSearchParams(location.search),size=Math.min(5,Math.max(.5,Number(params.get('size'))||4)),frame=document.getElementById('test');let retried=false,ended=false;
+frame.src='weinheim-live.html?run=1&size='+size+'&candidate='+(params.get('production')==='1'?'0':'1');
+const timer=setInterval(()=>{try{
+ const w=frame.contentWindow,r=w.testReport;if(!r||ended)return;
+ if(r.status==='running'){document.getElementById('result').textContent=(retried?'Wiederaufnahme aus Cache. ':'')+(w.document.getElementById('progress')?.textContent||'');return;}
+ if(r.status==='failed'&&!retried&&/Kartendienst|Gesamtzeit|Geländedaten|Netzwerk/.test(r.error||'')&&!/429|begrenzt|Pause/.test(r.error||'')){
+  retried=true;document.getElementById('result').textContent='Ein temporärer Datenfehler. Fertige Pakete werden beibehalten; genau ein neuer Versuch.';
+  r.status='running';setTimeout(()=>w.run(),5000);return;
+ }
+ ended=true;clearInterval(timer);const {detail,involvedBuildings,...summary}=r;summary.resumedOnce=retried;
+ if(w.testMesh){
+  const m=w.testMesh,n=m.vertices.length/3,edges=new Map();let volume=0,degenerate=0;const parent=new Int32Array(n);for(let i=0;i<n;i++)parent[i]=i;const root=i=>{while(i!==parent[i]){parent[i]=parent[parent[i]];i=parent[i];}return i;};
+  for(let i=0;i<m.indices.length;i+=3){const ids=[m.indices[i],m.indices[i+1],m.indices[i+2]],p=ids.map(id=>Array.from(m.vertices.slice(id*3,id*3+3))),[a,b,c]=p;
+   volume+=(a[0]*(b[1]*c[2]-b[2]*c[1])-a[1]*(b[0]*c[2]-b[2]*c[0])+a[2]*(b[0]*c[1]-b[1]*c[0]))/6;
+   const u=b.map((v,j)=>v-a[j]),v=c.map((v,j)=>v-a[j]);if(Math.hypot(u[1]*v[2]-u[2]*v[1],u[2]*v[0]-u[0]*v[2],u[0]*v[1]-u[1]*v[0])===0)degenerate++;
+   for(let j=0;j<3;j++){const a=ids[j],b=ids[(j+1)%3],k=Math.min(a,b)*n+Math.max(a,b),e=edges.get(k)||[0,0];e[0]++;e[1]+=a<b?1:-1;edges.set(k,e);parent[root(a)]=root(b);}
+  }
+  const used=new Set(m.indices),components=new Set([...used].map(root)).size,invalidEdges=[...edges.values()].filter(e=>e[0]!==2||e[1]!==0).length;
+  summary.independentAudit={invalidEdges,components,degenerate,volumeMM3:volume};
+  if(invalidEdges||components!==1||volume<=0){summary.status='failed';summary.error='Unabhängige Netzprüfung fehlgeschlagen';}
+  document.getElementById('project').hidden=false;document.getElementById('project').onclick=()=>{const data={version:3,settings:{...w.RS.defaults,mode:'model',title:'Weinheim',modelWidth:200,frame:4,resolution:161},data:w.testData};const url=URL.createObjectURL(new Blob([JSON.stringify(data)],{type:'application/json'})),a=document.createElement('a');a.href=url;a.download='Weinheim-live.relief.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),10000);};
+ }
+ window.finalReport=summary;document.getElementById('state').textContent=summary.status==='passed'?'PASS':'FAIL';document.getElementById('result').textContent=JSON.stringify(summary,null,2);document.getElementById('diagnostic').textContent=JSON.stringify({detail,involvedBuildings});
+}catch(e){document.getElementById('result').textContent=e.message;}},1500);
+</script></html>
