@@ -1,9 +1,9 @@
-/* Relief Studio 11: bounded requests, resumable packages, no incomplete core maps.
+/* Relief Studio 13: adaptive map packages, current Overpass providers, resumable 3D loads.
  * Public servers: at most two requests at once; never rotate to evade HTTP 429.
  */
 (function(R){
 'use strict';
-const OVERPASS=['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter'];
+const OVERPASS=['https://overpass.private.coffee/api/interpreter','https://maps.mail.ru/osm/tools/overpass/api/interpreter','https://overpass-api.de/api/interpreter'];
 const BODY_IDLE_MS=26000,BODY_MAX_MS=185000;
 const abortError=()=>new DOMException('Abgebrochen','AbortError');
 const send=(fn,e)=>{if(typeof fn==='function')fn(e);};
@@ -70,12 +70,12 @@ function createCache(){
  };
 }
 function splitBounds(b){const d=R.boundsInfo(b),c=R.project([b[0],b[1]]),e=R.project([b[2],b[3]]);if(d.w>=d.h){const x=R.unproject([(c[0]+e[0])/2,c[1]])[0];return [[b[0],b[1],x,b[3]],[x,b[1],b[2],b[3]]];}const y=R.unproject([c[0],(c[1]+e[1])/2])[1];return [[b[0],b[1],b[2],y],[b[0],y,b[2],b[3]]];}
-function initialParts(b){let parts=[b.slice()];while(parts.length<16){const at=parts.findIndex(p=>{const d=R.boundsInfo(p);return d.w*d.h>16e6;});if(at<0)break;parts.splice(at,1,...splitBounds(parts[at]));}return parts;}
+function initialParts(b,mode='poster'){let parts=[b.slice()];const area=mode==='model'?8e6:16e6,maximum=mode==='model'?24:16;while(parts.length<maximum){const at=parts.findIndex(p=>{const d=R.boundsInfo(p);return d.w*d.h>area;});if(at<0)break;parts.splice(at,1,...splitBounds(parts[at]));}return parts;}
 function mergeOSM(raws){const objects=new Map(),dates=[];for(const raw of raws){if(raw.osm3s?.timestamp_osm_base)dates.push(raw.osm3s.timestamp_osm_base);for(const e of raw.elements||[]){const id=e.type+'/'+e.id,old=objects.get(id);if(!old){objects.set(id,e);continue;}const og=old.geometry?.length||old.members?.length||0,ng=e.geometry?.length||e.members?.length||0;const richer=ng>og?e:old;objects.set(id,{...richer,tags:{...old.tags,...e.tags}});}}return {elements:[...objects.values()],osm3s:{timestamp_osm_base:dates.sort()[0]||null}};}
 // Dependency injection lets tests exercise actual network/caching code, not replace
 // the complete loader with a fake success function.
 function createDataLoader(options={}){
- const cfg={headerMs:43000,poiMs:12000,idleMs:BODY_IDLE_MS,bodyMs:BODY_MAX_MS,sessionMs:180000,retryMs:800,maxRequests:40,...options.config};
+ const cfg={headerMs:33000,serverHeaderMs:70000,poiMs:12000,idleMs:BODY_IDLE_MS,bodyMs:BODY_MAX_MS,sessionMs:180000,retryMs:800,maxRequests:48,...options.config};
  const fetcher=options.fetch||((...a)=>fetch(...a)),cache=options.cache||createCache(),flights=new Map(),queue=[];
  let active=0,preferred=0,cooldown=0;
  function drain(){while(active<2&&queue.length){const job=queue.shift();job.signal?.removeEventListener('abort',job.cancel);if(job.signal?.aborted){job.reject(abortError());continue;}active++;Promise.resolve().then(job.work).then(job.resolve,job.reject).finally(()=>{active--;drain();});}}
@@ -102,35 +102,51 @@ function createDataLoader(options={}){
   return shared((R.server?'server:':'public:')+key,signal,onProgress,async(signal,emit)=>{
    // Shared across simultaneous same-area loads; successful package persists before
    // the overall map completes, so retrying never discards already finished work.
-   let last;const attempts=layer==='pois'||R.server?1:2,startEndpoint=preferred;
+   let last;const attempts=layer==='pois'||R.server?1:OVERPASS.length,startEndpoint=preferred;
    for(let i=0;i<attempts;i++){
     check(signal);if(Date.now()<cooldown)throw error('RATE_LIMIT',`Kartendienst-Pause: noch ${Math.ceil((cooldown-Date.now())/1000)} s. Bereits geladene Pakete bleiben gespeichert.`,{retryAt:cooldown});
     const index=(startEndpoint+i)%OVERPASS.length,endpoint=OVERPASS[index];
     emit({phase,status:'waiting',attempt:i+1,attempts,detail:i?'Anderer Datendienst nach Verbindungsfehler.':'Kleines Datenpaket wird angefragt; bisher keine Bytes.'});
     try{
-     const value=await slot(signal,()=>wire(R.server?`api/map?bbox=${encodeURIComponent(b.join(','))}&layer=${layer}&mode=${opts.mode||'poster'}`:endpoint,R.server?{}:{method:'POST',body:new URLSearchParams({data:layer==='pois'?poiQuery(b):osmQuery(b,layer)})},signal,e=>emit({phase,layer,attempt:i+1,attempts,...e}),layer==='pois'?cfg.poiMs:cfg.headerMs,layer==='pois'?5000000:layer==='geometry'?8000000:23000000));
+     const value=await slot(signal,()=>wire(R.server?`api/map?bbox=${encodeURIComponent(b.join(','))}&layer=${layer}&mode=${opts.mode||'poster'}`:endpoint,R.server?{}:{method:'POST',body:new URLSearchParams({data:layer==='pois'?poiQuery(b):osmQuery(b,layer)})},signal,e=>emit({phase,layer,attempt:i+1,attempts,...e}),layer==='pois'?cfg.poiMs:R.server?cfg.serverHeaderMs:(i?Math.min(cfg.headerMs,24000):cfg.headerMs),layer==='pois'?5000000:layer==='geometry'?8000000:23000000));
      if(!R.server)preferred=index;await cache.set(key,value);check(signal);return value;
     }catch(e){check(signal);last=e;if(['RATE_LIMIT','QUERY_TIMEOUT','SIZE','INCOMPLETE','HTTP'].includes(e.code)||i+1===attempts)break;emit({phase,status:'retry',detail:e.message+' Ein begrenzter Wiederholungsversuch folgt.'});await pause(cfg.retryMs,signal);}
    }
    throw last||Error('Kartendienst nicht verfügbar.');
   });
  }
- async function geometryTask(b,signal,onProgress,ctx,depth=0){
-  const planKey='plan:'+keyFor(b,'geometry');let plan=ctx.refresh?null:await cache.get(planKey);check(signal);
-  if(plan&&depth<2){ctx.total++;return mergeOSM(await Promise.all(plan.map(p=>geometryTask(p,signal,onProgress,ctx,depth+1))));}
-  try{if(++ctx.requests>cfg.maxRequests)throw error('BUDGET','Zu viele Wiederholungen. Fertige Pakete sind gespeichert; bitte erneut laden.');const raw=await getOSMLayer(b,signal,'geometry',onProgress,ctx);ctx.done++;send(onProgress,{phase:'base',status:'part',done:ctx.done,total:ctx.total,detail:`${ctx.done} von ${ctx.total} Kartenpaketen vollständig geladen.`});return raw;}
-  catch(e){check(signal);const d=R.boundsInfo(b);if(['QUERY_TIMEOUT','SIZE'].includes(e.code)&&depth<2&&Math.min(d.w,d.h)>300){plan=splitBounds(b);await cache.set(planKey,plan);ctx.total++;send(onProgress,{phase:'base',status:'part',done:ctx.done,total:ctx.total,detail:'Dichtes Gebiet wird in zwei kleinere Pakete aufgeteilt. Fertige Daten bleiben erhalten.'});return mergeOSM(await Promise.all(plan.map(p=>geometryTask(p,signal,onProgress,ctx,depth+1))));}throw e;}
+ // Split only incomplete compulsory geometry and relation tiles on recoverable
+ // slow-service errors. Never rotate/split in response to HTTP 429.
+ async function requiredTask(b,layer,signal,onProgress,ctx,depth=0){
+  const planKey='plan:'+keyFor(b,layer);let plan=ctx.refresh?null:await cache.get(planKey);check(signal);
+  if(Array.isArray(plan)&&plan.length===2&&depth<3){
+   ctx.total++;return mergeOSM(await Promise.all(plan.map(p=>requiredTask(p,layer,signal,onProgress,ctx,depth+1))));
+  }
+  try{
+   if(++ctx.requests>cfg.maxRequests)throw error('BUDGET','Zu viele Abfragen. Fertige Pakete bleiben gespeichert; bitte erneut versuchen.');
+   const raw=await getOSMLayer(b,signal,layer,onProgress,ctx);
+   ctx.done++;send(onProgress,{phase:'base',status:'part',done:ctx.done,total:ctx.total,detail:`${ctx.done} von ${ctx.total} Kartenpaketen vollständig geladen.`});
+   return raw;
+  }catch(e){
+   check(signal);const dims=R.boundsInfo(b);
+   if(['QUERY_TIMEOUT','SIZE','HEADER_TIMEOUT','IDLE','SERVER'].includes(e.code)&&depth<3&&Math.min(dims.w,dims.h)>300){
+    const children=splitBounds(b);await cache.set(planKey,children);check(signal);ctx.total++;
+    send(onProgress,{phase:'base',status:'part',done:ctx.done,total:ctx.total,detail:'Datendienst zu langsam: Teilbereich wird verkleinert. Fertige Pakete bleiben erhalten.'});
+    return mergeOSM(await Promise.all(children.map(p=>requiredTask(p,layer,signal,onProgress,ctx,depth+1))));
+   }
+   throw e;
+  }
  }
  async function loadMap(bounds,{signal,onProgress,refresh=false,terrainRequired=true,mode='model'}={}){
   R.validateBounds(bounds,mode);check(signal);const control=new AbortController(),stop=()=>control.abort(),started=Date.now();signal?.addEventListener('abort',stop,{once:true});let expired=false;const deadline=setTimeout(()=>{expired=true;stop();},cfg.sessionMs);
-  const local=control.signal,parts=initialParts(bounds),ctx={done:0,total:parts.length+1,requests:0,mode,refresh};
+  const local=control.signal,parts=initialParts(bounds,mode),ctx={done:0,total:parts.length+1,requests:0,mode,refresh};
   const placeholder={cols:2,rows:2,values:[0,0,0,0],available:false,source:'Nicht geladen – reines 2D-Poster'};
   // Heights are independent; any failed height load must not erase raw OSM cache.
   const terrainPromise=terrainRequired?terrainData(bounds,local,onProgress,cache,refresh).then(value=>({value}),e=>({error:e})):Promise.resolve({value:placeholder});
   try{
    send(onProgress,{phase:'base',status:'part',done:0,total:ctx.total,detail:`${ctx.total} überschaubare Kartenpakete; maximal zwei Anfragen gleichzeitig.`});
-   const geoPromise=Promise.all(parts.map(b=>geometryTask(b,local,onProgress,ctx)));
-   const relPromise=getOSMLayer(bounds,local,'relations',onProgress,{mode,refresh}).then(raw=>{ctx.done++;send(onProgress,{phase:'base',status:'part',done:ctx.done,total:ctx.total,detail:`${ctx.done} von ${ctx.total} Kartenpaketen vollständig geladen.`});return raw;});
+   const geoPromise=Promise.all(parts.map(b=>requiredTask(b,'geometry',local,onProgress,ctx)));
+   const relPromise=requiredTask(bounds,'relations',local,onProgress,ctx);
    const [geometry,relations]=await Promise.all([geoPromise,relPromise]);check(local);
    const raw=mergeOSM([...geometry,relations]);send(onProgress,{phase:'base',status:'done',count:raw.elements.length,detail:'Alle erforderlichen Kartenpakete geladen.'});
    // POIs are optional: one bounded request, no two 45-second fallback waits.
@@ -170,7 +186,10 @@ async function terrainData(bounds,signal,onProgress,cache,refresh=false){
  let z=14,a,b;do{a=tileXY(bounds[0],bounds[3],z);b=tileXY(bounds[2],bounds[1],z);if((Math.floor(b[0])-Math.floor(a[0])+1)*(Math.floor(b[1])-Math.floor(a[1])+1)<=48)break;z--;}while(z>9);
  const jobs=[];for(let y=Math.floor(a[1]);y<=Math.floor(b[1]);y++)for(let x=Math.floor(a[0]);x<=Math.floor(b[0]);x++)jobs.push([x,y]);
  const tiles=new Map();let next=0,done=0;send(onProgress,{phase:'terrain',status:'tiles',done:0,total:jobs.length,detail:`${jobs.length} Höhenkacheln zu laden`});
- const work=async()=>{while(next<jobs.length){if(signal?.aborted)throw abortError();const [x,y]=jobs[next++],url=R.server?`api/terrain/${z}/${x}/${y}.png`:`https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${x}/${y}.png`,tileKey=`terrain11:${z}/${x}/${y}`;let blob=refresh?null:await cache?.get(tileKey);check(signal);if(!blob){const response=await request(url,{signal},25000);blob=new Blob([await readBytes(response,1000000,15000,{signal,maxTime:45000})],{type:'image/png'});await cache?.set(tileKey,blob,7*24*3600000);}check(signal);
+ const work=async()=>{while(next<jobs.length){if(signal?.aborted)throw abortError();const [x,y]=jobs[next++],url=R.server?`api/terrain/${z}/${x}/${y}.png`:`https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${x}/${y}.png`,tileKey=`terrain11:${z}/${x}/${y}`;let blob=refresh?null:await cache?.get(tileKey);check(signal);if(!blob){for(let attempt=0;attempt<2;attempt++)try{
+    const response=await request(url,{signal},25000);blob=new Blob([await readBytes(response,1000000,15000,{signal,maxTime:45000})],{type:'image/png'});break;
+   }catch(e){if(signal?.aborted||attempt||['RATE_LIMIT','HTTP'].includes(e.code))throw e;await pause(500,signal);}
+   await cache?.set(tileKey,blob,7*24*3600000);}check(signal);
   let image;if(typeof createImageBitmap==='function')image=await createImageBitmap(blob);else image=await new Promise((resolve,reject)=>{const im=new Image(),u=URL.createObjectURL(blob);im.onload=()=>{URL.revokeObjectURL(u);resolve(im);};im.onerror=()=>{URL.revokeObjectURL(u);reject(Error('Höhenbild ist nicht lesbar.'));};im.src=u;});
   const canvas=document.createElement('canvas');canvas.width=256;canvas.height=256;const ctx=canvas.getContext('2d',{willReadFrequently:true});ctx.drawImage(image,0,0);const rgba=ctx.getImageData(0,0,256,256).data;image.close?.();const h=new Float32Array(65536);for(let i=0;i<h.length;i++)h[i]=rgba[i*4]*256+rgba[i*4+1]+rgba[i*4+2]/256-32768;tiles.set(x+','+y,h);done++;send(onProgress,{phase:'terrain',status:'tiles',done,total:jobs.length,detail:`${done} von ${jobs.length} Höhenkacheln empfangen`});
  }};
