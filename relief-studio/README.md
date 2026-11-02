@@ -1,3 +1,29 @@
+# Relief Studio 12
+
+Aktuell: polygonale Gebäude, erfasste Dachformen und druckbare Vereinigung mit dem Gelände. Details in `RELEASE-NOTES-12.md` und `TEST-REPORT-12.md`.
+
+Im Download sind alle Änderungen bereits angewendet. Im GitHub-Quellordner: `python relief-studio/source/tools/apply_release12.py`. Der Prüfsummen-geprüfte Delta-Stand ersetzt die bisherigen Versionen 10/11 lokal ohne Zugangsdaten. Vorhandene eigene Änderungen werden nicht überschrieben.
+
+Wichtig: Die folgenden älteren Abschnitte dokumentieren die bisherige Entwicklung. Für 3D gelten die neuen Einschränkungen und Einstellungen aus Version 12.
+
+# Relief Studio 11 – stabilerer Kartenabruf
+
+**Diese ZIP enthält bereits den vollständigen Version-11-Quellcode.**
+
+Direkt starten: `Relief-Studio.html` im Browser öffnen. Neue Kartendaten benötigen Internet. Die lokale Einzeldatei hat keinen PIN-Schutz.
+
+Eigener Server: `node setup.mjs` für ein eigenes Passwort, danach `node server.mjs`. Keine Passwortdatei ist mitgeliefert. Für öffentliche Bereitstellung HTTPS und ein starkes Passwort verwenden.
+
+## Neu in Version 11
+
+Kleinere Geometriepakete, separate Flächenrelationen, Wiederaufnahme mit gespeicherten Pflichtpaketen, maximal zwei parallele OSM-Anfragen, begrenzter Ersatzversuch, höchstens zwölf Sekunden zusätzliche Wartezeit für historische Marker. Keine Veröffentlichung einer unvollständigen Basiskarte. Erfolgreiche Kartenteile und Höhenkacheln werden zwischengespeichert; Wiederholungen müssen diese nicht neu herunterladen.
+
+Tests: `npm test`; gezielter Lade-/Lasttest: `npm run test:loader` (Browserteil benötigt Python Playwright und Chromium). Ergebnisse, verwendete synthetische Daten und Grenzen sind in `TEST-REPORT-11.md` dokumentiert.
+
+Die Bereitstellung in `site/` nutzt das unveränderte v10-Grundpaket plus einen SHA-256-geprüften v11-Patch. Das ist eine Speicher-/Übertragungsoptimierung, keine serverseitige Zugangskontrolle. Die normale Anwendung in `public/` und die Einzeldatei sind bereits vollständig auf Version 11.
+
+## Bisherige Funktionen und Anleitungen (Versionshistorie)
+
 # Relief Studio 10 — ehrlicher Fortschritt und neues 3-Farben-Logo
 
 - **Datenphasen getrennt:** Zuerst OSM-Gebäude, Straßen und Gewässer, anschließend historische Orte als optionaler Zusatzabruf; in 3D außerdem echte Höhenkacheln. Ein Ausfall der zusätzlichen Orte blockiert die fertige Karte nicht. Es werden keine erfundenen Orte ergänzt.

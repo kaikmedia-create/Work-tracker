@@ -49,7 +49,7 @@ test('optional historic POIs are fetched after base; center-only way becomes mar
   assert.equal(data.buildings.length,1);
   assert.equal(data.landmarks.length,2);
   assert.equal(data.landmarks.find(p=>p.id==='way/21').name,'Castro antigo');
-  assert.equal(calls.length,2);
+  assert.equal(calls.length,3); // geometry, relations, optional POIs
   assert(events.some(e=>e.phase==='base'&&e.status==='done')&&events.some(e=>e.phase==='pois'&&e.status==='done'));
  }finally{globalThis.fetch=old;}
 });

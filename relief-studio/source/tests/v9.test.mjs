@@ -20,7 +20,7 @@ test('New projects keep automatic region with safe editable overrides and featur
  assert.equal(R.cleanSettings({markerLimit:200}).markerLimit,100);
 });
 test('Overpass searches named historic heritage museums religious sites and viewpoints',()=>{
- const q=R.osmQuery(bb);
+ const q=R.poiQuery(bb);
  for(const part of ['nwr[historic][name]','nwr[heritage][name]','nwr[amenity=place_of_worship][name]','museum','viewpoint','lighthouse'])assert(q.includes(part),part);
  assert(!q.includes('historic~"^(castle|ruins|monument)$"'));
 });

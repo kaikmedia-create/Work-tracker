@@ -46,8 +46,10 @@ class SoftwareViewer {
  }
  queue(){if(this.pending)return;this.pending=true;requestAnimationFrame(()=>{this.pending=false;this.render();});}
  setMesh(mesh,settings){this.mesh=mesh;this.settings=settings;const [n,m]=mesh.grid,step=Math.max(1,Math.ceil(n/135)),faces=[];
+  if(mesh.kind==='architecture'){for(let i=0;i<mesh.indices.length;i+=3)faces.push([mesh.indices[i],mesh.indices[i+1],mesh.indices[i+2]]);}else{
   for(let y=0;y<m-1;y+=step)for(let x=0;x<n-1;x+=step){const X=Math.min(n-1,x+step),Y=Math.min(m-1,y+step),a=y*n+x,b=Y*n+x,c=y*n+X,d=Y*n+X;faces.push([a,b,c],[c,b,d]);}
   const topCount=(n-1)*(m-1)*6;for(let i=topCount;i<mesh.indices.length;i+=3)faces.push([mesh.indices[i],mesh.indices[i+1],mesh.indices[i+2]]);
+  }
   const colors=(settings.style==='night'?['#b8c9c3','#e5eee9','#dfb57e','#527983','#1b2628','#a8b9a4','#6f8882','#a3b0a5']:['#deddd2','#fffef9','#c4965f','#8caeb6','#29322e','#ccd3c1','#7e9690','#c2c8bb']).map(rgb),v=mesh.vertices;
   this.faces=faces.map(ids=>{const [a,b,c]=ids.map(i=>[v[i*3],v[i*3+1],v[i*3+2]]),n=norm(cross(b.map((x,i)=>x-a[i]),c.map((x,i)=>x-a[i]))),light=.52+.36*Math.max(dot(n,norm([-.8,-.5,1.7])),0)+.17*Math.max(dot(n,norm([.7,.5,.9])),0),kind=mesh.classes[ids[0]],col=colors[kind]||colors[0];return {ids,color:'rgb('+col.map(c=>Math.round(R.clamp(Math.pow(c*light,.96)*255,0,255))).join(',')+')',normal:n};});this.render();
  }
@@ -56,7 +58,7 @@ class SoftwareViewer {
   for(let i=0;i<v.length;i+=3){const x=v[i],y=v[i+1],z=v[i+2]-z0;projected.push([W/2+(-sy*x+cy*y)*scale,H/2-(-cy*sp*x-sy*sp*y+cp*z)*scale,cy*cp*x+sy*cp*y+sp*z]);}
   const eye=[cy*cp,sy*cp,sp];const visible=this.faces.filter(f=>dot(f.normal,eye)>-.005).map(f=>({...f,depth:f.ids.reduce((s,i)=>s+projected[i][2],0)})).sort((a,b)=>a.depth-b.depth);
   ctx.lineWidth=.55;ctx.lineJoin='round';for(const f of visible){ctx.beginPath();f.ids.forEach((id,i)=>{const p=projected[id];if(i)ctx.lineTo(p[0],p[1]);else ctx.moveTo(p[0],p[1]);});ctx.closePath();ctx.fillStyle=ctx.strokeStyle=f.color;ctx.fill();ctx.stroke();}
-  ctx.font='11px system-ui';ctx.fillStyle='#728075';ctx.textAlign='center';ctx.fillText('Software-3D · reduzierte Vorschau, voller Export',W/2,H-16);
+  ctx.font='11px system-ui';ctx.fillStyle='#728075';ctx.textAlign='center';ctx.fillText('Software-3D · Gebäudekanten wie im Druckexport',W/2,H-16);
  }
 }
 

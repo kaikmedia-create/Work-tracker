@@ -1,17 +1,21 @@
 {
-  "version": "11.0.0",
+  "version": "12.0.0",
   "account": "kaikmedia-create",
   "repository": "kaikmedia-create/Work-tracker",
   "folder": "relief-studio",
   "target": "github-pages",
-  "code_commit": "82b0ab54200ce3185f265143dd1e1238db336c9e",
-  "base_url": "https://kaikmedia-create.github.io/Work-tracker/relief-studio/",
+  "status": "published",
+  "base_commit": "85d226066ee8644fe9abf169bade21b242e95b41",
+  "code_commit": null,
   "entry": "index.html",
-  "gate": "gate-v11.js",
+  "gate": "gate-v12.js",
   "base_package": "bundle10.json",
-  "update": "upgrade11.json",
-  "update_sha256": "e0905f96144bc0a3e9933153e86604ffc83f908168f9cb6f4accf1e49eae1031",
-  "gating": "static preview PIN; not server-side authentication",
-  "source_in_repository": "Version-10 baseline plus checked Version-11 delta; run source/tools/apply_release11.py",
-  "source_in_download": "Version-11 source already applied"
+  "updates": [
+    "upgrade11.json",
+    "upgrade12.json"
+  ],
+  "source_in_repository": "v10/v11 baseline plus hash-checked v12 delta. Apply source/tools/apply_release12.py",
+  "source_in_download": "fully expanded v12 source",
+  "gating": "static preview PIN; not server-side access control",
+  "note": "Source and static preview deployed on main via GitHub App; the PIN is not server-side authorization."
 }

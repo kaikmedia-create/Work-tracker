@@ -1,4 +1,4 @@
-/* Relief Studio 2 — coordinate math, data normalization and printable geometry.
+/* Relief Studio 12 — coordinate math, data normalization and printable terrain.
  * No third-party runtime dependencies. All dimensions in the model are millimetres.
  */
 (function (root) {
@@ -208,7 +208,7 @@ function parseOSM(raw,bounds) {
   if(kind==='park')parks.push(f);
  }
  function kind(t) {
-  if((t.building&&t.building!=='no')||t['building:part']||t.man_made==='tower')return 'building';
+  if((t.building&&t.building!=='no')||(t['building:part']&&t['building:part']!=='no')||['tower','lighthouse'].includes(t.man_made))return 'building';
   if(t.natural==='water'||t.water||t.waterway==='riverbank')return 'water';
   if(t.natural==='coastline')return 'coastline';
   if(t.landuse==='forest'||t.natural==='wood'||t.leisure==='park'||t.landuse==='grass')return 'park';
@@ -227,6 +227,14 @@ function parseOSM(raw,bounds) {
    if(t.highway&&c.length>1)roads.push({id:'way/'+e.id,kind:roadClass(t.highway),highway:t.highway,name:String(t.name||'').slice(0,120),points:normalized(bounds,c)});
    if(t.waterway&&t.waterway!=='riverbank'&&c.length>1)roads.push({id:'water/'+e.id,kind:'river',points:normalized(bounds,c),highway:t.waterway,name:t.name||''});
    if(t.natural==='coastline'&&c.length>1)coastlines.push(normalized(bounds,c));
+   if((t.barrier==='wall'||t.historic==='citywalls')&&!t.building&&c.length>1){
+    const points=normalized(bounds,c),info=boundsInfo(bounds),width=clamp(parseFloat(t.width)||0.6,.15,15),height=clamp(parseFloat(t.height)||3,.3,100);
+    for(let j=0;j<points.length-1;j++){const a=points[j],b=points[j+1],dx=(b[0]-a[0])*info.w,dy=(b[1]-a[1])*info.h,len=Math.hypot(dx,dy);if(len<.1)continue;
+     const u=-dy/len*width/2/info.w,v=dx/len*width/2/info.h,ring=[[a[0]+u,a[1]+v],[b[0]+u,b[1]+v],[b[0]-u,b[1]-v],[a[0]-u,a[1]-v],[a[0]+u,a[1]+v]];
+     buildings.push({id:'wall/'+e.id+'/'+j,name:String(t.name||'Mauer').slice(0,120),rings:[ring],height,heightSource:t.height?'OSM-Höhe':'Schätzwert',landmark:!!t.historic,tags:{...t,'rs:wall':'yes','roof:shape':'flat'}});
+    }
+   }
+
    if(!used.has(e.id)){const k=kind(t);if(k==='coastline'){}else if(k&&c.length>=4&&Math.abs(c[0][0]-c.at(-1)[0])+Math.abs(c[0][1]-c.at(-1)[1])<1e-7)feature(e,[c],k);}
   }
   const named=String(t.name||t['name:en']||t['name:de']||'').trim();
@@ -239,8 +247,14 @@ function parseOSM(raw,bounds) {
    }
   }
  }
- const cells=new Map(); for(const p of buildings.filter(b=>b.tags['building:part'])){const c=centroid(p.rings[0]),key=Math.floor(c[0]*100)+','+Math.floor(c[1]*100);if(!cells.has(key))cells.set(key,[]);cells.get(key).push(c);}
- const kept=buildings.filter(b=>{if(b.tags['building:part'])return true;const bb=ringBox(b.rings[0]);if((bb[2]-bb[0])*(bb[3]-bb[1])>4)return true;for(let y=Math.floor(bb[1]*100);y<=Math.ceil(bb[3]*100);y++)for(let x=Math.floor(bb[0]*100);x<=Math.ceil(bb[2]*100);x++)if((cells.get(x+','+y)||[]).some(c=>inside(...c,b.rings)))return false;return true;});
+ const parts=buildings.filter(b=>b.tags['building:part']&&b.tags['building:part']!=='no'),cells=new Map();
+ for(const b of parts){const c=centroid(b.rings[0]),key=Math.floor(c[0]*100)+','+Math.floor(c[1]*100);if(!cells.has(key))cells.set(key,[]);cells.get(key).push({b,c});}
+ for(const b of buildings){if(b.tags['building:part'])continue;const box=ringBox(b.rings[0]);b.partIds=[];
+  // Clamp query span: objects far beyond the selection must not cause huge loops.
+  for(let y=Math.max(-1,Math.floor(box[1]*100));y<=Math.min(101,Math.ceil(box[3]*100));y++)for(let x=Math.max(-1,Math.floor(box[0]*100));x<=Math.min(101,Math.ceil(box[2]*100));x++)
+   for(const p of cells.get(x+','+y)||[])if(inside(...p.c,b.rings)&&p.b.id!==b.id)b.partIds.push(p.b.id);
+ }
+ const kept=buildings;
  // Fail closed if a coastline geometry would flood a built-up part of town.
  // Natural=coastline explicitly separates land from sea, so flooding many
  // OSM building centres is a strong indication of broken/missing ways.
@@ -267,7 +281,7 @@ function sampleTerrain(terrain,u,v) {
  const x=clamp(u,0,1)*(cols-1), y=clamp(v,0,1)*(rows-1),a=Math.floor(x),b=Math.floor(y),c=Math.min(a+1,cols-1),d=Math.min(b+1,rows-1),tx=x-a,ty=y-b;
  return (values[b*cols+a]*(1-tx)+values[b*cols+c]*tx)*(1-ty)+(values[d*cols+a]*(1-tx)+values[d*cols+c]*tx)*ty;
 }
-const defaults={layout:'bottom',font:'serif',textAlign:'center',uppercase:true,boldTitle:false,tracking:0.025,subtitleScale:1,caption:'',captionScale:1,showCoordinates:true,coordinateStyle:'decimal',customCoordinates:'',divider:true,band:22,mapFit:'contain',mapBorder:false,mapScale:1,showAttribution:true,labelStyle:'plain',labelScale:1,labelMarkers:true,labelFont:'sans',labelColor:'#233737',markerColor:'#b57842',markerLimit:36,customColors:false,paperColor:'#faf8f2',landColor:'#f3f0e8',inkColor:'#233737',waterColor:'#ccd9dc',accentColor:'#b57842',majorColor:'#35494a',buildingColor:'#c6c4b9',title:'Weinheim',subtitle:'BADEN-WÜRTTEMBERG · DEUTSCHLAND',region:'Baden-Württemberg',countryCode:'DE',countryName:'Deutschland',autoSubtitle:true,lon:8.6808,lat:49.5480,widthKm:3.2,heightKm:3.0,modelWidth:200,base:3,terrainFactor:2,buildingFactor:1.5,landmarkFactor:1.8,landmarkWidth:1,frame:4,waterDepth:0.45,resolution:321,major:2.2,secondary:1.3,local:0.7,paths:0.32,roadRelief:0,style:'ivory',paper:'A4',paperW:210,paperH:297,orientation:'portrait',dpi:300,margin:12,headline:1,contours:true,hillshade:false,showBuildings:true,showLabels:true,format:'pdf',adaptive:true,mode:'model',landmarkOverrides:{}};
+const defaults={layout:'bottom',font:'serif',textAlign:'center',uppercase:true,boldTitle:false,tracking:0.025,subtitleScale:1,caption:'',captionScale:1,showCoordinates:true,coordinateStyle:'decimal',customCoordinates:'',divider:true,band:22,mapFit:'contain',mapBorder:false,mapScale:1,showAttribution:true,labelStyle:'plain',labelScale:1,labelMarkers:true,labelFont:'sans',labelColor:'#233737',markerColor:'#b57842',markerLimit:36,customColors:false,paperColor:'#faf8f2',landColor:'#f3f0e8',inkColor:'#233737',waterColor:'#ccd9dc',accentColor:'#b57842',majorColor:'#35494a',buildingColor:'#c6c4b9',title:'Weinheim',subtitle:'BADEN-WÜRTTEMBERG · DEUTSCHLAND',region:'Baden-Württemberg',countryCode:'DE',countryName:'Deutschland',autoSubtitle:true,lon:8.6808,lat:49.5480,widthKm:3.2,heightKm:3.0,modelWidth:200,base:3,geometryVersion:12,terrainFactor:1,buildingFactor:1,landmarkFactor:1,landmarkWidth:1,frame:4,waterDepth:0.45,resolution:321,major:2.2,secondary:1.3,local:0.7,paths:0.32,roadRelief:0,style:'ivory',paper:'A4',paperW:210,paperH:297,orientation:'portrait',dpi:300,margin:12,headline:1,contours:true,hillshade:false,showBuildings:true,showLabels:true,format:'pdf',adaptive:true,mode:'model',landmarkOverrides:{}};
 const paperSizes={'10 × 15 cm':[100,150],'13 × 18 cm':[130,180],'15 × 20 cm':[150,200],'20 × 30 cm':[200,300],'30 × 40 cm':[300,400],'30 × 45 cm':[300,450],'40 × 50 cm':[400,500],'40 × 60 cm':[400,600],'50 × 70 cm':[500,700],'50 × 75 cm':[500,750],'60 × 80 cm':[600,800],'60 × 90 cm':[600,900],'70 × 100 cm':[700,1000],A5:[148,210],A4:[210,297],A3:[297,420],A2:[420,594],A1:[594,841],A0:[841,1189],'20 × 20 cm':[200,200],'30 × 30 cm':[300,300],'40 × 40 cm':[400,400],'50 × 50 cm':[500,500],custom:[210,297]};
 const palettes={ivory:{name:'Atelier',paper:'#faf8f2',land:'#f3f0e8',water:'#ccd9dc',park:'#e6e9dd',building:'#c6c4b9',major:'#35494a',secondary:'#6a7774',local:'#a4aaa2',path:'#c1c5ba',ink:'#233737',accent:'#b57842',contour:'#c8c8b5'},mono:{name:'Monochrom',paper:'#ffffff',land:'#ffffff',water:'#e5e7eb',park:'#f3f4f3',building:'#d8d8d8',major:'#171717',secondary:'#565656',local:'#969696',path:'#c8c8c8',ink:'#141414',accent:'#282828',contour:'#dddddd'},blue:{name:'Nordic',paper:'#f4f7f8',land:'#eef2f1',water:'#b8ccd6',park:'#dce6df',building:'#b4c4cd',major:'#214c65',secondary:'#668ba0',local:'#99b4c2',path:'#b9ccd3',ink:'#193d54',accent:'#b17c4e',contour:'#cbd7d8'},night:{name:'Midnight',paper:'#142c31',land:'#19363b',water:'#0d2025',park:'#29433f',building:'#3d5556',major:'#f2d7a6',secondary:'#b8bbaa',local:'#748c87',path:'#4b6867',ink:'#f6ead6',accent:'#e1ae6a',contour:'#355152'}};
 function cleanSettings(input={}) {
@@ -285,6 +299,8 @@ function cleanSettings(input={}) {
  if(!paperSizes[s.paper])s.paper='custom';
  if(!s.landmarkOverrides||typeof s.landmarkOverrides!=='object'||Array.isArray(s.landmarkOverrides))s.landmarkOverrides={};
  s.landmarkOverrides=Object.fromEntries(Object.entries(s.landmarkOverrides).slice(0,2000).map(([k,v])=>[k,{...(typeof v?.enabled==='boolean'?{enabled:v.enabled}:{}),...(typeof v?.label==='boolean'?{label:v.label}:{}),...(typeof v?.featured==='boolean'?{featured:v.featured}:{}),...(Number.isFinite(v?.height)?{height:clamp(v.height,1,1000)}:{}),...(Number.isFinite(v?.factor)?{factor:clamp(v.factor,1,5)}:{})}]));
+ s.geometryVersion=12;
+ if(input.geometryVersion!==12){s.buildingFactor=1;s.landmarkFactor=1;s.landmarkWidth=1;}
  return s;
 }
 function validateProject(p) {
@@ -380,9 +396,9 @@ function zip(files) {
 }
 function model3mf(mesh,name='City') {
  const v=mesh.vertices,idx=mesh.indices,escape=s=>String(s).replace(/[<>&"']/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&apos;'}[c]));
- const verts=[];for(let i=0;i<v.length;i+=3)verts.push(`<vertex x="${v[i].toFixed(4)}" y="${v[i+1].toFixed(4)}" z="${v[i+2].toFixed(4)}"/>`);
+ const verts=[];for(let i=0;i<v.length;i+=3)verts.push(`<vertex x="${v[i].toFixed(6)}" y="${v[i+1].toFixed(6)}" z="${v[i+2].toFixed(6)}"/>`);
  const triangles=[];for(let i=0;i<idx.length;i+=3)triangles.push(`<triangle v1="${idx[i]}" v2="${idx[i+1]}" v3="${idx[i+2]}"/>`);
- const xml=`<?xml version="1.0" encoding="UTF-8"?><model unit="millimeter" xml:lang="de-DE" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"><metadata name="Title">${escape(name)}</metadata><metadata name="Description">Map data © OpenStreetMap contributors, ODbL. Terrain: Mapzen / AWS Terrain Tiles. Simplified raster relief, no surveyed architectural model.</metadata><resources><object id="1" type="model"><mesh><vertices>${verts.join('')}</vertices><triangles>${triangles.join('')}</triangles></mesh></object></resources><build><item objectid="1"/></build></model>`;
+ const xml=`<?xml version="1.0" encoding="UTF-8"?><model unit="millimeter" xml:lang="de-DE" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"><metadata name="Title">${escape(name)}</metadata><metadata name="Description">Map data © OpenStreetMap contributors, ODbL. Terrain: Mapzen / AWS Terrain Tiles. Exact footprint 2.5D relief with tagged roofs. Missing attributes remain estimates; no surveyed architectural model.</metadata><resources><object id="1" type="model"><mesh><vertices>${verts.join('')}</vertices><triangles>${triangles.join('')}</triangles></mesh></object></resources><build><item objectid="1"/></build></model>`;
  return zip({'[Content_Types].xml':'<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/></Types>','_rels/.rels':'<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Target="/3D/3dmodel.model" Id="rel0" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/></Relationships>','3D/3dmodel.model':xml});
 }
 Object.assign(R,{clamp,finite,project,unproject,boundsFor,boundsInfo,validateBounds,normalized,inside,insideRing,ringBox,centroid,parseHeight,roadClass,subtitleForLocation,landmarkPriority,landmarkCategory,parseOSM,seaPolygonsFromCoastlines,sampleTerrain,defaults,paperSizes,palettes,cleanSettings,validateProject,simplify,contours,buildMesh,stl,crc32,zip,model3mf});

@@ -1,0 +1,347 @@
+/* Relief Studio 12. Exact-footprint, 2.5D solid construction.
+ * Terrain triangles and architectural roof planes are partitioned in XY.
+ * Only the upper envelope is kept; vertical seams are stitched into one closed
+ * surface, rather than rasterising buildings or exporting intersecting shells.
+ * No architectural detail is invented where OSM supplies no roof/part geometry.
+ */
+(function(R){
+'use strict';
+const EPS=1e-8, Q=1e7;
+const cross=(a,b,c)=>(b[0]-a[0])*(c[1]-a[1])-(b[1]-a[1])*(c[0]-a[0]);
+const area=p=>p.reduce((s,a,i)=>{const b=p[(i+1)%p.length];return s+a[0]*b[1]-b[0]*a[1];},0)/2;
+const eq=(a,b)=>Math.abs(a[0]-b[0])+Math.abs(a[1]-b[1])<EPS;
+const evalZ=(plane,p)=>plane[0]*p[0]+plane[1]*p[1]+plane[2];
+function tidy(poly){
+ const a=[];for(const p of poly){if(p.every(Number.isFinite)&&(!a.length||!eq(a.at(-1),p)))a.push(p);}
+ if(a.length>1&&eq(a[0],a.at(-1)))a.pop();
+ if(a.length<3||Math.abs(area(a))<1e-10)return [];
+ if(area(a)<0)a.reverse();return a;
+}
+// Intersect a convex polygon with ax+by+c >= 0.
+function half(poly,line){
+ const out=[];for(let i=0;i<poly.length;i++){
+  const a=poly[i],b=poly[(i+1)%poly.length],da=evalZ(line,a),db=evalZ(line,b),ia=da>=-EPS,ib=db>=-EPS;
+  if(ia)out.push(a);
+  if(ia!==ib){const t=da/(da-db);out.push([a[0]+t*(b[0]-a[0]),a[1]+t*(b[1]-a[1])]);}
+ }return tidy(out);
+}
+const negate=l=>l.map(v=>-v);
+const bbox=p=>R.ringBox(p);
+const intersects=(a,b)=>a[0]<b[2]+EPS&&a[2]>b[0]-EPS&&a[1]<b[3]+EPS&&a[3]>b[1]-EPS;
+function lineFor(a,b){return [a[1]-b[1],b[0]-a[0],a[0]*b[1]-b[0]*a[1]];}
+function splitBy(poly,cutter){
+ let part=poly;const outside=[];
+ for(let i=0;i<cutter.length&&part.length;i++){
+  const l=lineFor(cutter[i],cutter[(i+1)%cutter.length]),o=half(part,negate(l));if(o.length)outside.push(o);part=half(part,l);
+ }return {inside:part,outside};
+}
+// Even-odd sweep decomposition supports concave outlines AND courtyards without
+// bridging across holes. All output pieces are convex trapezoids.
+function decompose(rings){
+ const ys=[...new Set(rings.flat().map(p=>p[1]))].sort((a,b)=>a-b),out=[];
+ for(let j=0;j<ys.length-1;j++){
+  const lo=ys[j],hi=ys[j+1];if(hi-lo<EPS)continue;const mid=(lo+hi)/2,edges=[];
+  for(const ring of rings)for(let i=0;i<ring.length;i++){
+   const a=ring[i],b=ring[(i+1)%ring.length];
+   if((a[1]>mid)===(b[1]>mid))continue;
+   const x=y=>a[0]+(y-a[1])*(b[0]-a[0])/(b[1]-a[1]);edges.push({x,xm:x(mid)});
+  }
+  edges.sort((a,b)=>a.xm-b.xm);
+  if(edges.length%2)throw Error('Ein Gebäudegrundriss ist nicht geschlossen.');
+  for(let i=0;i<edges.length;i+=2){const l=edges[i],r=edges[i+1],p=tidy([[l.x(lo),lo],[r.x(lo),lo],[r.x(hi),hi],[l.x(hi),hi]]);if(p.length)out.push(p);}
+ }return out;
+}
+function metres(v){
+ if(v===undefined||v===null||v==='')return NaN;
+ const str=String(v).trim().replace(',','.');
+ if(!/^[+\-]?\d+(?:\.\d+)?\s*(m|metres?|meters?|ft|feet|')?$/i.test(str))return NaN;
+ const n=parseFloat(str);return /ft|feet|'/.test(str)?n*.3048:n;
+}
+function roofSpec(b,scale){
+ const t=b.tags||{},shape=String(t['roof:shape']||'flat').toLowerCase();
+ const shapes=['flat','gabled','hipped','pyramidal','skillion','dome','cone'];
+ let total=metres(t.height),source=b.heightSource==='Manuell'?'Manuell':'OSM-Höhe',roof=metres(t['roof:height']);
+ if(!(total>0)){total=Number(b.height);source=b.heightSource||'Schätzwert';}
+ if(!(total>0))total=9;
+ if(!(roof>=0)){
+  const levels=Number(t['roof:levels']);roof=levels>0?levels*3:NaN;
+ }
+ const unsupported=!shapes.includes(shape);
+ if(unsupported||shape==='flat')roof=0;
+ return {shape:unsupported?'flat':shape,unsupported,roof,total:R.clamp(total,0.2,1000),source,estimatedRoof:!(roof>=0),minHeight:Math.max(0,metres(t.min_height)||0)};
+}
+function roofFrame(ring,t){
+ let best={a:Infinity,x:[1,0],y:[0,1],minX:0,maxX:0,minY:0,maxY:0};
+ for(let i=0;i<ring.length;i++){
+  const a=ring[i],b=ring[(i+1)%ring.length],len=Math.hypot(b[0]-a[0],b[1]-a[1]);if(len<EPS)continue;
+  const x=[(b[0]-a[0])/len,(b[1]-a[1])/len],y=[-x[1],x[0]],xs=ring.map(p=>p[0]*x[0]+p[1]*x[1]),ys=ring.map(p=>p[0]*y[0]+p[1]*y[1]);
+  const minX=Math.min(...xs),maxX=Math.max(...xs),minY=Math.min(...ys),maxY=Math.max(...ys),area=(maxX-minX)*(maxY-minY);
+  if(area<best.a-EPS)best={a:area,x,y,minX,maxX,minY,maxY};
+ }
+ let slope=(best.maxX-best.minX)<=(best.maxY-best.minY)?best.x:best.y;
+ if(t['roof:orientation']==='across')slope=[-slope[1],slope[0]];
+ const dirs={N:0,NNE:22.5,NE:45,ENE:67.5,E:90,ESE:112.5,SE:135,SSE:157.5,S:180,SSW:202.5,SW:225,WSW:247.5,W:270,WNW:292.5,NW:315,NNW:337.5};
+ const tag=t['roof:direction'],angle=tag===undefined?NaN:(dirs[String(tag).toUpperCase()]??Number(tag));
+ if(Number.isFinite(angle)){const r=angle*Math.PI/180;slope=[Math.sin(r),Math.cos(r)];}
+ const along=[-slope[1],slope[0]],u=ring.map(p=>p[0]*slope[0]+p[1]*slope[1]),v=ring.map(p=>p[0]*along[0]+p[1]*along[1]);
+ return {u:slope,v:along,umin:Math.min(...u),umax:Math.max(...u),vmin:Math.min(...v),vmax:Math.max(...v)};
+}
+function planeFrom3(a,b,c){
+ const det=cross(a,b,c);if(Math.abs(det)<1e-12)return [0,0,a[2]];
+ const x=((b[2]-a[2])*(c[1]-a[1])-(c[2]-a[2])*(b[1]-a[1]))/det;
+ const y=((b[0]-a[0])*(c[2]-a[2])-(c[0]-a[0])*(b[2]-a[2]))/det;
+ return [x,y,a[2]-x*a[0]-y*a[1]];
+}
+function roofPieces(pieces,frame,spec,foot,scale){
+ const {u,v,umin,umax,vmin,vmax}=frame,du=umax-umin,dv=vmax-vmin;
+ if(du<EPS||dv<EPS)return [];
+ let roof=spec.roof;
+ if(!(roof>=0)){
+  // A tagged roof shape without height is a documented estimate, never an
+  // invented turret. Keep the supplied TOTAL building height fixed.
+  roof=Math.min(spec.total*.30,Math.min(du,dv)/scale*.35);spec.estimatedRoof=true;
+ }
+ roof=R.clamp(roof,0,spec.total*.95);spec.roof=roof;
+ const total=foot+spec.total*scale,z0=total-roof*scale,rh=roof*scale;
+ const make=(poly,plane)=>({poly,plane});
+ if(spec.shape==='flat'||rh<EPS)return pieces.map(p=>make(p,[0,0,total]));
+ const linear=(dir,slope,off)=>[dir[0]*slope,dir[1]*slope,z0+off];
+ if(spec.shape==='skillion')return pieces.map(p=>make(p,linear(u,-rh/du,rh+rh*umin/du)));
+ // Concave roof surfaces can be represented as a lower envelope of planes.
+ const planes=[linear(u,2*rh/du,-2*rh*umin/du),linear(u,-2*rh/du,2*rh*umax/du)];
+ if(spec.shape==='hipped'||spec.shape==='pyramidal'){
+  const run=spec.shape==='hipped'?Math.min(du,dv)/2:dv/2;
+  planes.push(linear(v,rh/run,-rh*vmin/run),linear(v,-rh/run,rh*vmax/run));
+ }
+ if(['gabled','hipped','pyramidal'].includes(spec.shape)){
+  const out=[];
+  for(const poly of pieces)for(let i=0;i<planes.length;i++){
+   let p=poly;for(let j=0;j<planes.length&&p.length;j++)if(i!==j)p=half(p,planes[j].map((z,k)=>z-planes[i][k]));
+   if(p.length)out.push(make(p,planes[i]));
+  }return out;
+ }
+ // Explicit cone/dome tags: polygonal meridians, clipped to the actual footprint.
+ // Do NOT treat generic towers/churches/castles as cones.
+ const cu=(umin+umax)/2,cv=(vmin+vmax)/2,center=[u[0]*cu+v[0]*cv,u[1]*cu+v[1]*cv],sectors=24,rings=spec.shape==='dome'?6:1,out=[];
+ const at=(r,a)=>[center[0]+u[0]*du/2*r*Math.cos(a)+v[0]*dv/2*r*Math.sin(a),center[1]+u[1]*du/2*r*Math.cos(a)+v[1]*dv/2*r*Math.sin(a),z0+rh*(spec.shape==='dome'?Math.sqrt(Math.max(0,1-r*r)):1-r)];
+ // Radius sqrt(2) covers rectangular footprint corners; outside ellipse roof is flat.
+ const patches=[];
+ for(let k=0;k<sectors;k++){
+  const a=k*Math.PI*2/sectors,b=(k+1)*Math.PI*2/sectors;
+  for(let j=0;j<rings;j++){
+   const r0=j/rings,r1=(j+1)/rings,A=at(r0,a),B=at(r1,a),C=at(r1,b),D=at(r0,b);
+   patches.push([A,B,C]);if(j)patches.push([A,C,D]);
+  }
+ }
+ for(const poly of pieces){let remaining=[poly];
+  for(const triangle of patches){const cut=tidy(triangle.map(p=>p.slice(0,2)));if(!cut.length)continue;const next=[];
+   for(const p of remaining){const split=splitBy(p,cut);next.push(...split.outside);if(split.inside.length)out.push(make(split.inside,planeFrom3(...triangle)));}remaining=next;
+  }
+  for(const p of remaining)out.push(make(p,[0,0,z0]));
+ }return out;
+}
+function architecturePatches(data,s,terrainAt,w,h,scale){
+ const out=[],stats={buildings:0,roofTagged:0,roofEstimated:0,heightEstimated:0,unsupportedRoofs:0,walls:0,minHeightFilled:0,omitted:0,parts:0};
+ const border=[[-w/2,-h/2],[w/2,-h/2],[w/2,h/2],[-w/2,h/2]];
+ const parents=new Map(data.buildings.map(b=>[b.id,b]));
+ for(let i=0;i<data.buildings.length;i++){
+  const b=data.buildings[i],tag=b.tags||{},override=s.landmarkOverrides[b.id]||{};
+  if(!b.rings?.length)continue;
+  if(b.rings.reduce((n,r)=>n+r.length,0)>5000){throw Error('Ein Gebäude hat mehr als 5.000 Grundrisspunkte. Bitte einen kleineren Ausschnitt wählen.');}
+  const rings=b.rings.map(r=>{const p=r.map(p=>[(p[0]-.5)*w,(.5-p[1])*h]);if(p.length>1&&eq(p[0],p.at(-1)))p.pop();return p;});
+  if(rings[0].length<3)continue;
+  let polys=decompose(rings).map(p=>splitBy(p,border).inside).filter(p=>p.length);
+  if(!polys.length)continue;
+  // Building parts replace only their footprint, not the entire main nave.
+  for(const id of b.partIds||[]){const part=parents.get(id);if(!part)continue;
+   const cutters=decompose(part.rings.map(r=>r.map(p=>[(p[0]-.5)*w,(.5-p[1])*h])));
+   for(const cutter of cutters){polys=polys.flatMap(p=>intersects(bbox(p),bbox(cutter))?splitBy(p,cutter).outside:[p]);}
+  }
+  if(!polys.length)continue;
+  const all=polys.flat(),sample=all.map(p=>terrainAt(p[0]/w+.5,.5-p[1]/h)),foot=Math.max(...sample);
+  const obj=Number.isFinite(override.height)?{...b,height:override.height,tags:{...tag,height:String(override.height)},heightSource:'Manuell'}:b;
+  const spec=roofSpec(obj,scale),frame=roofFrame(rings[0],tag);
+  const explicitAngle=Number(tag['roof:angle']);
+  if(spec.estimatedRoof&&Number.isFinite(explicitAngle)&&explicitAngle>0&&explicitAngle<85){spec.roof=Math.tan(explicitAngle*Math.PI/180)*(frame.umax-frame.umin)/(2*scale);spec.estimatedRoof=false;}
+  const parts=roofPieces(polys,frame,spec,foot,scale);
+  const isLand=override.enabled===undefined?!!b.landmark:!!override.enabled;
+  for(const p of parts)out.push({...p,box:bbox(p.poly),kind:isLand?2:1,building:i});
+  stats.buildings++;stats.parts+=tag['building:part']&&tag['building:part']!=='no'?1:0;
+  stats.walls+=tag['rs:wall']==='yes'?1:0;
+  if(spec.source!=='OSM-Höhe')stats.heightEstimated++;
+  if(spec.shape!=='flat')stats.roofTagged++;
+  if(spec.estimatedRoof&&spec.shape!=='flat')stats.roofEstimated++;
+  if(spec.unsupported)stats.unsupportedRoofs++;
+  if(spec.minHeight>0)stats.minHeightFilled++;
+ }
+ return {patches:out,stats};
+}
+// Return nonoverlapping convex top faces after laying one roof patch over them.
+function overlay(faces,patch){
+ const out=[];
+ for(const f of faces){
+  if(!intersects(f.box||bbox(f.poly),patch.box)){out.push(f);continue;}
+  const hit=splitBy(f.poly,patch.poly);
+  if(!hit.inside.length){out.push(f);continue;}
+  for(const p of hit.outside)out.push({...f,poly:p,box:bbox(p)});
+  if(patch.force){out.push({...patch,poly:hit.inside,box:bbox(hit.inside)});continue;}
+  const delta=patch.plane.map((v,i)=>v-f.plane[i]);
+  const ds=hit.inside.map(p=>evalZ(delta,p));
+  if(ds.every(v=>v>=-EPS))out.push({...patch,poly:hit.inside,box:bbox(hit.inside)});
+  else if(ds.every(v=>v<=EPS))out.push({...f,poly:hit.inside,box:bbox(hit.inside)});
+  else{
+   const high=half(hit.inside,delta),low=half(hit.inside,negate(delta));
+   if(high.length)out.push({...patch,poly:high,box:bbox(high)});
+   if(low.length)out.push({...f,poly:low,box:bbox(low)});
+  }
+ }return out;
+}
+// Conforming edge subdivision prevents T-junctions at roof ridges, building
+// intersections, courtyards and terrain cells. The XY graph is shared by all roofs.
+function stitchSurface(faces,W,H,stats){
+ const groups=new Map(),segments=[];
+ const lineKey=(a,b)=>{
+  let dx=b[0]-a[0],dy=b[1]-a[1],len=Math.hypot(dx,dy);if(len<EPS)return null;
+  dx/=len;dy/=len;if(dx<-EPS||(Math.abs(dx)<EPS&&dy<0)){dx=-dx;dy=-dy;}
+  const c=-dy*a[0]+dx*a[1],scale=1e6,k=[Math.round(dx*scale),Math.round(dy*scale),Math.round(c*scale)];
+  let key=k.join(',');if(groups.has(key))return groups.get(key);
+  // Near a rounding boundary, numerical clipping can land in a neighboring bin.
+  for(let x=-1;x<=1;x++)for(let y=-1;y<=1;y++)for(let z=-1;z<=1;z++){
+   const v=groups.get([k[0]+x,k[1]+y,k[2]+z].join(','));if(v&&Math.abs(v.dx-dx)<1e-7&&Math.abs(v.dy-dy)<1e-7&&Math.abs(v.c-c)<1e-7)return v;
+  }
+  const group={dx,dy,c,values:[]};groups.set(key,group);return group;
+ };
+ for(let i=0;i<faces.length;i++){
+  const f=faces[i];f.edgeSegments=[];
+  for(let j=0;j<f.poly.length;j++){
+   const a=f.poly[j],b=f.poly[(j+1)%f.poly.length],group=lineKey(a,b);if(!group)continue;
+   const from=a[0]*group.dx+a[1]*group.dy,to=b[0]*group.dx+b[1]*group.dy;
+   group.values.push(from,to);const e={f:i,a,b,group,from,to};segments.push(e);f.edgeSegments.push(e);
+  }
+ }
+ for(const group of groups.values()){group.values.sort((a,b)=>a-b);group.values=group.values.filter((v,i,a)=>!i||v-a[i-1]>EPS*8);}
+ const xy=[],xyIndex=new Map(),xyZ=[],edges=new Map();
+ function vertex2(p){const ix=Math.round(p[0]*Q),iy=Math.round(p[1]*Q),key=ix+','+iy;let i=xyIndex.get(key);if(i!==undefined)return i;
+  // A value lying on a quantisation boundary may round differently after
+  // clipping from opposite sides. Weld neighbours too, at sub-micron tolerance.
+  for(let x=-1;x<=1;x++)for(let y=-1;y<=1;y++){const n=xyIndex.get((ix+x)+','+(iy+y));if(n!==undefined&&Math.abs(xy[n][0]-p[0])+Math.abs(xy[n][1]-p[1])<2/Q)return n;}
+  i=xy.length;xyIndex.set(key,i);xy.push(p);xyZ.push([]);return i;
+ }
+ function lower(a,x){let lo=0,hi=a.length;while(lo<hi){const mid=(lo+hi)>>1;if(a[mid]<x-EPS*8)lo=mid+1;else hi=mid;}return lo;}
+ for(const e of segments){
+  const vals=e.group.values,min=Math.min(e.from,e.to),max=Math.max(e.from,e.to),list=[];
+  for(let j=lower(vals,min);j<vals.length&&vals[j]<=max+EPS*8;j++){
+   const t=R.clamp((vals[j]-e.from)/(e.to-e.from),0,1);list.push(vertex2([e.a[0]+t*(e.b[0]-e.a[0]),e.a[1]+t*(e.b[1]-e.a[1])]));
+  }
+  if(e.to<e.from)list.reverse();e.ids=list.filter((v,i,a)=>!i||v!==a[i-1]);
+  for(let j=0;j<e.ids.length-1;j++){
+   const a=e.ids[j],b=e.ids[j+1],key=a<b?a+','+b:b+','+a;if(!edges.has(key))edges.set(key,[]);edges.get(key).push({a,b,f:e.f});
+  }
+  for(const id of e.ids)xyZ[id].push(evalZ(faces[e.f].plane,xy[id]));
+ }
+ const positions=[],classes=[],indices=[],vertexMap=new Map(),heightIndex=new Map();
+ function v3(id,z,kind){
+  const p=xy[id],v=[Math.fround(p[0]),Math.fround(p[1]),Math.fround(z)],key=v.join(',');let i=vertexMap.get(key);
+  // Equivalent plane evaluations may straddle a Float32 rounding boundary.
+  // Weld only coincident XY points and heights within 0.00001 mm, including
+  // neighbouring height bins. This is far below printable dimensional detail.
+  const zbin=Math.round(z*100000),xykey=v[0]+','+v[1]+',';
+  if(i===undefined)for(let dz=-1;dz<=1;dz++){const candidate=heightIndex.get(xykey+(zbin+dz));if(candidate!==undefined&&Math.abs(positions[candidate*3+2]-z)<.00001){i=candidate;break;}}
+  if(i===undefined){i=positions.length/3;positions.push(...v);classes.push(kind);heightIndex.set(xykey+zbin,i);}else if(kind===1||kind===2)classes[i]=kind;
+  vertexMap.set(key,i);return i;
+ }
+ function tri(a,b,c){if(a===b||b===c||c===a)return;indices.push(a,b,c);}
+ // Centroid fans preserve every boundary split, including collinear vertices.
+ for(const f of faces){
+  const ids=f.edgeSegments.flatMap(e=>e.ids.slice(0,-1));if(ids.length<3)continue;
+  const center=ids.reduce((p,id)=>[p[0]+xy[id][0]/ids.length,p[1]+xy[id][1]/ids.length],[0,0]),ci=vertex2(center),cz=evalZ(f.plane,center),mid=v3(ci,cz,f.kind);
+  for(let j=0;j<ids.length;j++){const a=ids[j],b=ids[(j+1)%ids.length];tri(mid,v3(a,evalZ(f.plane,xy[a]),f.kind),v3(b,evalZ(f.plane,xy[b]),f.kind));}
+ }
+ const boundary=[];
+ for(const list of edges.values()){
+  if(list.length>2)throw Error('Überlagerte Gebäudekanten konnten nicht sauber verbunden werden. Bitte einen kleineren Ausschnitt wählen.');
+  const e=list[0];
+  if(list.length===1){
+   const a=xy[e.a],b=xy[e.b],onEdge=(p,k,s)=>Math.abs(p[k]-s)<1e-5;
+   if(![[0,-W/2],[0,W/2],[1,-H/2],[1,H/2]].some(([k,s])=>onEdge(a,k,s)&&onEdge(b,k,s)))throw Error('Eine Gebäudenaht konnte nicht geschlossen werden. Bitte einen kleineren Ausschnitt wählen; kein unvollständiges Modell wurde exportiert.');
+   xyZ[e.a].push(0);xyZ[e.b].push(0);boundary.push(e);
+  }
+ }
+ // All heights meeting at each XY junction must also split vertical wall edges.
+ for(let i=0;i<xyZ.length;i++){xyZ[i].sort((a,b)=>a-b);xyZ[i]=xyZ[i].filter((z,j,a)=>!j||z-a[j-1]>1e-7);}
+ function wall(e,pA,pB,kind){
+  const za=evalZ(pA,xy[e.a]),zb=evalZ(pA,xy[e.b]),wa=evalZ(pB,xy[e.a]),wb=evalZ(pB,xy[e.b]);
+  if(Math.abs(za-wa)+Math.abs(zb-wb)<1e-7)return;
+  const ids=[v3(e.a,za,kind),v3(e.b,zb,kind)];
+  const byB=xyZ[e.b].filter(z=>z<zb-1e-7&&z>wb+1e-7).reverse();for(const z of byB)ids.push(v3(e.b,z,kind));ids.push(v3(e.b,wb,kind),v3(e.a,wa,kind));
+  for(const z of xyZ[e.a].filter(z=>z>wa+1e-7&&z<za-1e-7))ids.push(v3(e.a,z,kind));
+  // For a CCW top boundary, outward wall orientation goes down first.
+  ids.reverse();const cx=(xy[e.a][0]+xy[e.b][0])/2,cy=(xy[e.a][1]+xy[e.b][1])/2,ci=vertex2([cx,cy]),mid=v3(ci,(za+zb+wa+wb)/4,kind);
+  for(let j=0;j<ids.length;j++)tri(mid,ids[j],ids[(j+1)%ids.length]);
+ }
+ for(const list of edges.values()){
+  let e=list[0],f=faces[e.f],other=list.length===2?faces[list[1].f]:null;
+  if(!other){wall(e,f.plane,[0,0,0],4);continue;}
+  const a=xy[e.a],b=xy[e.b],p=[(a[0]+b[0])/2,(a[1]+b[1])/2];
+  if(evalZ(f.plane,p)<evalZ(other.plane,p)){e=list[1];const tmp=f;f=other;other=tmp;}
+  wall(e,f.plane,other.plane,f.kind);
+ }
+ const center=vertex2([0,0]),bottom=v3(center,0,4);
+ for(const e of boundary)tri(bottom,v3(e.b,0,4),v3(e.a,0,4));
+ return {vertices:new Float32Array(positions),indices:new Uint32Array(indices),classes:new Uint8Array(classes)};
+}
+const raster=R.buildMesh;
+function buildArchitecture(data,settings,repairs=[]){
+ const s=R.cleanSettings(settings),info=R.boundsInfo(data.bounds),w=s.modelWidth,h=w*info.h/info.w,scale=w/info.w;
+ // More terrain samples cannot recover missing DEM data. Buildings no longer
+ // depend on this terrain resolution at all.
+ const n=Math.min(s.resolution,Math.max(65,Math.min(257,data.terrain.cols+16)));
+ const terrain=raster({...data,buildings:[]},{...s,resolution:n,buildingFactor:0,landmarkFactor:1,landmarkWidth:1});
+ let low=Infinity;for(const z of data.terrain.values)low=Math.min(low,z);
+ const terrainAt=(u,v)=>s.base+Math.max(0,R.sampleTerrain(data.terrain,u,v)-low)*scale*s.terrainFactor;
+ const {patches,stats}=architecturePatches(data,s,terrainAt,w,h,scale);
+ patches.push(...repairs);stats.contactRepairs=repairs.length;
+ if(s.frame>0){const X=w/2+s.frame,Y=h/2+s.frame;
+  for(const poly of [[[-X,-Y],[X,-Y],[X,-h/2],[-X,-h/2]],[[-X,h/2],[X,h/2],[X,Y],[-X,Y]],[[-X,-h/2],[-w/2,-h/2],[-w/2,h/2],[-X,h/2]],[[w/2,-h/2],[X,-h/2],[X,h/2],[w/2,h/2]]])
+   patches.unshift({poly,box:bbox(poly),plane:[0,0,s.base+1.4],kind:4,building:-1,force:true});
+ }
+
+ if(patches.length>200000)throw Error('Zu viele architektonische Teilflächen. Bitte einen kleineren Kartenausschnitt wählen.');
+ const [cols,rows]=terrain.grid,W=terrain.width,H=terrain.height,dx=W/(cols-1),dy=H/(rows-1),bins=new Map();
+ for(let i=0;i<patches.length;i++){
+  const p=patches[i],bb=p.box,x0=R.clamp(Math.floor((bb[0]+W/2)/dx),0,cols-2),x1=R.clamp(Math.floor((bb[2]+W/2)/dx),0,cols-2),y0=R.clamp(Math.floor((H/2-bb[3])/dy),0,rows-2),y1=R.clamp(Math.floor((H/2-bb[1])/dy),0,rows-2);
+  for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++){const key=y*(cols-1)+x;if(!bins.has(key))bins.set(key,[]);bins.get(key).push(i);}
+ }
+ const faces=[],topCount=(cols-1)*(rows-1)*6,v=terrain.vertices,idx=terrain.indices;
+ for(let i=0;i<topCount;i+=3){
+  const ids=[idx[i],idx[i+1],idx[i+2]],points=ids.map(id=>{const x=(id%cols)/(cols-1)*W-W/2,y=H/2-Math.floor(id/cols)/(rows-1)*H;return [x,y,terrain.classes[id]===4?terrainAt(x/w+.5,.5-y/h):v[id*3+2]];}),poly=tidy(points.map(p=>p.slice(0,2))),plane=planeFrom3(...points);
+  if(!poly.length)continue;const cell=Math.floor(i/6),candidates=bins.get(cell)||[];
+  let local=[{poly,plane,kind:terrain.classes[ids[0]],box:bbox(poly)}];
+  for(const j of candidates)local=overlay(local,patches[j]);
+  faces.push(...local);
+  if(faces.length>800000)throw Error('Modell überschreitet das sichere Detailbudget. Bitte kleineren Ausschnitt wählen.');
+ }
+ const result=stitchSurface(faces,W,H,stats);
+ // Two footprints touching at a single XY point create a non-manifold vertical
+ // edge. Regularise ONLY those contacts with a 0.004 mm-wide connection, below
+ // print resolution; never globally inflate landmark footprints.
+ const count=result.vertices.length/3,usage=new Map(),ix=result.indices,vs=result.vertices;
+ for(let i=0;i<ix.length;i+=3)for(let j=0;j<3;j++){
+  const a=ix[i+j],b=ix[i+(j+1)%3],k=Math.min(a,b)*count+Math.max(a,b),v=usage.get(k)||[0,0];v[0]++;v[1]+=a<b?1:-1;usage.set(k,v);
+ }
+ const bad=[...usage].filter(([,v])=>v[0]!==2||v[1]!==0);
+ if(bad.length){
+  const additions=[];
+  for(const [key,val] of bad){const a=Math.floor(key/count),b=key%count,x=vs[a*3],y=vs[a*3+1],z=Math.max(vs[a*3+2],vs[b*3+2])+.002;
+   if(val[0]!==4||Math.abs(x-vs[b*3])+Math.abs(y-vs[b*3+1])>1e-6)break;
+   const r=.002,poly=tidy([[Math.max(-w/2,x-r),Math.max(-h/2,y-r)],[Math.min(w/2,x+r),Math.max(-h/2,y-r)],[Math.min(w/2,x+r),Math.min(h/2,y+r)],[Math.max(-w/2,x-r),Math.min(h/2,y+r)]]);
+   if(!poly.length)break;additions.push({poly,box:bbox(poly),plane:[0,0,z],kind:result.classes[a],building:-1});
+  }
+  if(!repairs.length&&additions.length===bad.length&&additions.length<=100)return buildArchitecture(data,settings,additions);
+  throw Error('Die Gebäudegeometrie enthält eine nicht druckbare Naht. Bitte einen kleineren Ausschnitt wählen. Ein fehlerhaftes Modell wurde nicht freigegeben.');
+ }
+ let zmax=0;for(let i=2;i<result.vertices.length;i+=3)zmax=Math.max(zmax,result.vertices[i]);
+ return {...result,width:W,height:H,zmax,grid:[0,0],cell:terrain.cell,kind:'architecture',architectureVersion:12,architecture:stats,missed:stats.omitted,estimated:stats.heightEstimated,buildingCount:stats.buildings,terrainGrid:terrain.grid};
+}
+Object.assign(R,{buildRasterMesh:raster,buildMesh:buildArchitecture,architecture:{decompose,roofSpec,roofFrame,roofPieces,half,overlay,stitchSurface,buildArchitecture}});
+})(globalThis.RS);
