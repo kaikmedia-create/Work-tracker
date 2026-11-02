@@ -4,7 +4,7 @@
   "repository": "kaikmedia-create/Work-tracker",
   "folder": "relief-studio",
   "target": "github-pages",
-  "status": "publishing",
+  "status": "published",
   "base_commit": "85d226066ee8644fe9abf169bade21b242e95b41",
   "code_commit": null,
   "entry": "index.html",
@@ -18,5 +18,5 @@
   "source_in_repository": "Expanded v13 source with hash-verified v13 GitHub Pages delta.",
   "source_in_download": "fully expanded v12 source",
   "gating": "static preview PIN; not server-side access control",
-  "note": "Source and static preview published via GitHub App. Public external map services have no SLA; static PIN is not server-side authorization."
+  "note": "GitHub Pages v13 deployment succeeded on main; static preview excludes server.mjs from its encrypted bundle. The gate applies required browser deltas and skips only the optional server patch."
 }

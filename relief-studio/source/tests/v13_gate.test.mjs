@@ -19,8 +19,11 @@ test('v13 gate refuses an incorrect PIN',async()=>{const r=start('0000');await r
 test('v13 gate reconstructs tested source bytes and retains the 3D worker',async()=>{
  const r=start('2808');await r.load();assert.equal(r.els.status.textContent,'');
  const files=r.files(),html=r.html();
- for(const name of ['public/data.js','public/index.html','server.mjs'])assert.equal(files[name],await readFile(join(root,name),'utf8'),'deployed source differs: '+name);
+ for(const name of ['public/data.js','public/index.html'])assert.equal(files[name],await readFile(join(root,name),'utf8'),'deployed source differs: '+name);
  assert(html.includes('RELIEF STUDIO <b>13.0</b>'));
+ assert(files['public/data.js'].includes('requiredTask'));
+ // Server is not part of the encrypted static browser bundle; it is deployed separately as source.
+ assert(!('server.mjs' in files)||files['server.mjs']===await readFile(join(root,'server.mjs'),'utf8'));
  assert(html.includes('overpass.private.coffee')&&html.includes('requiredTask')&&html.includes('RS_WORKER_SOURCE'));
  assert(!html.includes('src="core.js"'));
 });

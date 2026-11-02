@@ -43,7 +43,7 @@ $('login').onsubmit=async e=>{
    const p13=await (await get('upgrade13.json')).json();
    if(p13.version!==13||!p13.changes||Object.keys(p13.changes).length!==3)throw Error('Ungültiges Stabilitäts-Update.');
    for(const [name,c] of Object.entries(p13.changes)){
-    if(!(name in files))throw Error('Fehlende Datei im Stabilitäts-Update: '+name);
+    if(!(name in files)){if(name==='server.mjs')continue;throw Error('Fehlende Datei im Stabilitäts-Update: '+name);}
     if(await hash(files[name])!==c.base)throw Error('Quellstand passt nicht zu Version 13: '+name);
     const lines=files[name].split('\n');for(const [start,count,add] of c.edits.slice().reverse())lines.splice(start,count,...add);
     const value=lines.join('\n');if(await hash(value)!==c.result)throw Error('Stabilitäts-Prüfsumme stimmt nicht: '+name);files[name]=value;
