@@ -1,0 +1,62 @@
+{
+  "release": "18.0.0",
+  "date": "2026-11-03",
+  "baseline": "b80ae709c42fe3824dc69992db10d1f04232aa1d",
+  "node": {
+    "passed": 195,
+    "failed": 0
+  },
+  "browser": {
+    "passed": 8,
+    "failed": 0,
+    "realWorker": true,
+    "fixture": "user-supplied complete diagnostic",
+    "freshPublicDownload": false
+  },
+  "weinheim": {
+    "extentKm": [
+      3.2,
+      3
+    ],
+    "modelWidthMm": 200,
+    "inputObjects": 6346,
+    "outputObjects": 6344,
+    "omittedFailures": 0,
+    "triangles": 1155772,
+    "vertices": 577888,
+    "badEdges": 0,
+    "components": 1,
+    "zeroAreaTriangles": 0,
+    "contactRepairs": 109,
+    "repairPasses": 1,
+    "xySeamWelds": 1,
+    "maxXYSeamShiftMm": 3.425045429873244e-07,
+    "nonOutputRecords": "One parent already represented by its parts; one record wholly outside selected bounds."
+  },
+  "olderWeinheimRegression": {
+    "inputObjects": 3294,
+    "outputObjects": 3294,
+    "triangles": 612546,
+    "badEdges": 0,
+    "components": 1,
+    "omittedFailures": 0
+  },
+  "independentExports": {
+    "formats": [
+      "STL",
+      "3MF"
+    ],
+    "passed": 2,
+    "watertight": true,
+    "consistentWinding": true,
+    "components": 1,
+    "zeroAreaTriangles": 0,
+    "browserDownloadsByteIdentical": true,
+    "sha256": {
+      "stl": "22b4ac93f6b11bc54face3f90b9ec63ee0e41b3806f0c9d35b559297e0a39e3f",
+      "3mf": "5010b2924b6760421f14b7b0e54a8361e33675d7b82b21a92a9868a615bbfb90"
+    }
+  },
+  "physicalPrintTested": false,
+  "privateInputIncluded": false
+}
