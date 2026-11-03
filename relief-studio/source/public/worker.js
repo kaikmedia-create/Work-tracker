@@ -1,2 +1,2 @@
 importScripts('core.js','architecture.js');
-self.onmessage=function(event){const {id,data,settings}=event.data;try{const result=RS.buildMesh(data,settings);self.postMessage({id,result},[result.vertices.buffer,result.indices.buffer,result.classes.buffer]);}catch(e){self.postMessage({id,error:e.message});}};
+self.onmessage=function(event){const {id,data,settings}=event.data;try{const result=RS.buildMesh(data,settings);self.postMessage({id,result},[result.vertices.buffer,result.indices.buffer,result.classes.buffer]);}catch(e){self.postMessage({id,error:e.message,code:e.code||'GEOMETRY_ERROR',stack:e.stack||'',diagnostics:e.diagnostics||null});}};

@@ -75,7 +75,7 @@ function mergeOSM(raws){const objects=new Map(),dates=[];for(const raw of raws){
 // Dependency injection lets tests exercise actual network/caching code, not replace
 // the complete loader with a fake success function.
 function createDataLoader(options={}){
- const cfg={headerMs:33000,serverHeaderMs:70000,poiMs:12000,idleMs:BODY_IDLE_MS,bodyMs:BODY_MAX_MS,sessionMs:180000,retryMs:800,maxRequests:48,...options.config};
+ const cfg={headerMs:33000,serverHeaderMs:70000,poiMs:12000,idleMs:BODY_IDLE_MS,bodyMs:BODY_MAX_MS,sessionMs:180000,retryMs:800,maxRequests:48,resumeAttempts:1,...options.config};
  const fetcher=options.fetch||((...a)=>fetch(...a)),cache=options.cache||createCache(),flights=new Map(),queue=[];
  let active=0,preferred=0,cooldown=0;
  function drain(){while(active<2&&queue.length){const job=queue.shift();job.signal?.removeEventListener('abort',job.cancel);if(job.signal?.aborted){job.reject(abortError());continue;}active++;Promise.resolve().then(job.work).then(job.resolve,job.reject).finally(()=>{active--;drain();});}}
@@ -159,10 +159,27 @@ function createDataLoader(options={}){
    const features=R.parseOSM(mergeOSM([raw,poi||{elements:[]}]),bounds);check(local);
    const data={version:2,coastlineVersion:8,bounds:bounds.slice(),terrain:height.value,...features,capturedAt:new Date().toISOString(),osmTimestamp:raw.osm3s?.timestamp_osm_base||null,source:'OpenStreetMap contributors · ODbL 1.0',realData:true,loadStats:{packages:ctx.done,requests:ctx.requests,durationMs:Date.now()-started},loaderVersion:11,architectureSourceVersion:12};
    data.warnings.push(...warnings);if(!features.buildings.length)data.warnings.push('Keine Gebäude im geladenen Ausschnitt erfasst.');send(onProgress,{phase:'process',status:'done',count:data.buildings.length,detail:'Karte vollständig aufbereitet.'});return data;
-  }catch(e){stop();if(expired&&!signal?.aborted)throw error('DEADLINE','Gesamtzeit erreicht. Vollständige Datenpakete sind gespeichert; „Erneut versuchen“ lädt nur Fehlendes.');if(signal?.aborted)throw abortError();throw e;}
+  }catch(e){stop();if(expired&&!signal?.aborted)throw error('DEADLINE','Gesamtzeit erreicht. Vollständige Datenpakete sind gespeichert; „Erneut versuchen“ lädt nur Fehlendes.',{completedPackages:ctx.done,totalPackages:ctx.total});if(signal?.aborted)throw abortError();throw e;}
   finally{clearTimeout(deadline);signal?.removeEventListener('abort',stop);}
  }
- return {loadMap,getOSMLayer,cache,diagnostics:()=>({active,queued:queue.length,inFlight:flights.size,cooldownUntil:cooldown})};
+ // One bounded continuation is allowed only after real required packages completed.
+ // Keep caches, never bypass 429, never restart after user cancellation or zero progress.
+ async function loadResumable(bounds,opts={}){
+  const started=Date.now(),limit=Math.min(1,Math.max(0,Number(cfg.resumeAttempts)||0));
+  for(let recovery=0;;recovery++){
+   try{
+    const data=await loadMap(bounds,recovery?{...opts,refresh:false}:opts);
+    data.loadStats={...data.loadStats,durationMs:Date.now()-started,resumeAttempts:recovery};return data;
+   }catch(e){
+    check(opts.signal);
+    if(e.code!=='DEADLINE'||!(e.completedPackages>0)||recovery>=limit)throw e;
+    send(opts.onProgress,{phase:'base',status:'retry',recovery:true,done:e.completedPackages,total:e.totalPackages,
+     detail:`${e.completedPackages} von ${e.totalPackages} Kartenpaketen sind gespeichert. Fehlende Daten werden einmal automatisch nachgeladen; fertige Pakete bleiben erhalten.`});
+    await pause(cfg.retryMs,opts.signal);
+   }
+  }
+ }
+ return {loadMap:loadResumable,getOSMLayer,cache,diagnostics:()=>({active,queued:queue.length,inFlight:flights.size,cooldownUntil:cooldown})};
 }
 async function searchPlace(q,signal){
  const query=String(q).trim().slice(0,140);if(query.length<2)throw Error('Bitte mindestens zwei Zeichen eingeben.');

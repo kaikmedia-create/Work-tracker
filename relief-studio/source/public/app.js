@@ -35,13 +35,21 @@ async function resolveRegion(){
  }
 }
 
-function notify(text,type='info',action=null){
+function notify(text,type='info',action=null,issue=null,context={}){
  clearTimeout(toastTimer);$('toast').hidden=true;const target=started?document.querySelector('.main'):$('welcome');if($('notice').parentElement!==target)target.prepend($('notice'));
  $('notice').hidden=false;$('notice').className='notice '+type;
  $('notice-title').textContent={info:'Hinweis',success:'Erledigt',warning:'Bitte beachten',error:'Das hat nicht funktioniert'}[type]||'Hinweis';
  $('notice-message').textContent=text;
+ const diagnostic=$('notice-diagnose');
+ if(type==='error'){R.diagnostics.capture(issue||text,{...context,message:text});}
+ if(diagnostic){diagnostic.hidden=type!=='error';diagnostic.onclick=()=>{try{R.diagnostics.download();}catch(e){diagnostic.textContent='Download fehlgeschlagen';diagnostic.title=e.message;}};}
  $('notice-action').hidden=!action;if(action){$('notice-action').textContent=action.label;$('notice-action').onclick=action.run;}
 }R.notify=notify;
+R.diagnostics.setProvider(()=>({settings,data,bounds:bounds.slice(),view:currentView,panel:currentPanel,
+ stage:building?'3D-Geometrie':abort?'Kartendaten':exporting?'Export':currentPanel,
+ loading:!!abort,building,loader:R.loaderDiagnostics?.()}));
+window.addEventListener('error',event=>{if(event.error)notify('Anwendungsfehler: '+event.error.message,'error',null,event.error,{stage:'Browser'});});
+window.addEventListener('unhandledrejection',event=>{const e=event.reason;if(e?.name==='AbortError')return;notify('Anwendungsfehler: '+(e?.message||String(e)),'error',null,e,{stage:'Promise'});});
 function persist(){try{localStorage.setItem('relief-settings-v3',JSON.stringify(settings));}catch{}}
 function flow(){return settings.mode==='poster'?['place','style','text','export']:['place','model','style','export'];}
 function panel(name){
@@ -82,7 +90,7 @@ function showChoice(){
  document.querySelector('.welcome-note').textContent=data?'Deine geladenen Kartendaten und Einstellungen bleiben beim Moduswechsel erhalten.':'Deine Projekte bleiben bei dir. Kein Kundenkonto nötig.';
  window.scrollTo({top:0});
 }
-function chooseMode(mode){
+function chooseMode(mode,{buildModel=true}={}){
  if(!['poster','model'].includes(mode))return;
  const previous=settings.mode;
  if(mode==='poster'&&!data&&previous!=='poster'){settings.contours=false;settings.hillshade=false;}
@@ -98,14 +106,14 @@ function chooseMode(mode){
  $('panel-export').querySelector('h2').textContent=mode==='poster'?'Bereit für deine Wand.':'Bereit für deinen Drucker.';
  $('metric-b-label').textContent=mode==='poster'?'POSTERFORMAT':'MODELLGRÖẞE INKL. RAHMEN';
  controls();persist();panel(!data||needsTerrain()||stale()?'place':mode==='poster'?'style':'model');
- if(data&&mode==='model'&&!needsTerrain()&&!mesh&&!building)build();
+ if(buildModel&&data&&mode==='model'&&!needsTerrain()&&!mesh&&!building)build();
  if(needsTerrain())explain(commonReason());
  window.scrollTo({top:0});
 }
 // ARIA-disabled buttons remain discoverable. A click explains the reason instead of doing nothing.
 document.addEventListener('click',event=>{const button=event.target.closest('button');if(button?.dataset.blocked){event.preventDefault();event.stopImmediatePropagation();explain(button.dataset.blocked);}},true);
 function view(name){if(started&&((settings.mode==='poster'&&name==='model')||(settings.mode==='model'&&(name==='poster'||name==='design'))))name=settings.mode==='poster'?'poster':'model';currentView=name;all('[data-view]').forEach(b=>{const yes=b.dataset.view===name;b.classList.toggle('active',yes);b.setAttribute('aria-selected',yes);});all('.view').forEach(p=>{p.hidden=p.id!=='view-'+name;p.classList.toggle('active',!p.hidden);});$('stage-eyebrow').textContent={area:'DEIN AUSSCHNITT',design:'KARTENSTIL · GROSSE VORSCHAU',model:'ECHTES GELÄNDE · DEIN RELIEF',poster:'DEIN DRUCKORIGINAL'}[name];requestAnimationFrame(()=>{map.draw();if(name==='model'){ensureViewer();viewer?.render();}if(name==='poster'||name==='design')preview();});}
-function ensureViewer(){if(viewer||!mesh)return;try{viewer=new R.ModelViewer($('model-canvas'));viewer.setMesh(mesh,settings);}catch(e){notify(e.message,'error');$('model-empty').hidden=false;$('model-empty').replaceChildren(Object.assign(document.createElement('p'),{textContent:e.message}));}}
+function ensureViewer(){if(viewer||!mesh)return;try{viewer=new R.ModelViewer($('model-canvas'));viewer.setMesh(mesh,settings);}catch(e){notify(e.message,'error',null,e);$('model-empty').hidden=false;$('model-empty').replaceChildren(Object.assign(document.createElement('p'),{textContent:e.message}));}}
 function stale(){if(!data)return false;return data.bounds.some((v,i)=>Math.abs(v-bounds[i])>0.00001);}
 function labels(){
  all('[data-output]').forEach(e=>{const k=e.dataset.output;e.textContent=['terrainFactor','buildingFactor','landmarkFactor','landmarkWidth','headline','subtitleScale','captionScale','mapScale'].includes(k)?number(settings[k]*100,0)+' %':number(settings[k],2)+(k==='tracking'?' em':k==='band'?' %':k==='margin'?' mm':['frame','waterDepth','roadRelief'].includes(k)?' mm':' ×');});
@@ -138,7 +146,7 @@ function labels(){
 }
 function controls(){all('[data-setting]').forEach(e=>{const v=settings[e.dataset.setting];if(e.type==='checkbox')e.checked=!!v;else e.value=String(v);});labels();}
 function updateBounds(fit=false){bounds=R.boundsFor(settings.lon,settings.lat,settings.widthKm,settings.heightKm);map.setBounds(bounds,fit);labels();persist();}
-const map=new R.AreaMap($('map-canvas'),b=>{bounds=b;const i=R.boundsInfo(b);settings.lon=+i.lon.toFixed(6);settings.lat=+i.lat.toFixed(6);settings.widthKm=+(i.w/1000).toFixed(3);settings.heightKm=+(i.h/1000).toFixed(3);controls();persist();map.drawMode=false;$('draw-area').classList.remove('selected');if(settings.autoSubtitle)resolveRegion();});map.limitMode=settings.mode;map.onError=e=>notify(e.message||String(e),'error');
+const map=new R.AreaMap($('map-canvas'),b=>{bounds=b;const i=R.boundsInfo(b);settings.lon=+i.lon.toFixed(6);settings.lat=+i.lat.toFixed(6);settings.widthKm=+(i.w/1000).toFixed(3);settings.heightKm=+(i.h/1000).toFixed(3);controls();persist();map.drawMode=false;$('draw-area').classList.remove('selected');if(settings.autoSubtitle)resolveRegion();});map.limitMode=settings.mode;map.onError=e=>notify(e.message||String(e),'error',null,e,{stage:'Kartenansicht'});
 function quality(){
  const target=$('quality-content');target.replaceChildren();if(!data){target.textContent='Die Datenqualität wird nach dem Laden angezeigt.';return;}
  const measured=data.buildings.filter(b=>b.heightSource==='OSM-Höhe').length,levels=data.buildings.filter(b=>b.heightSource==='Geschosse × 3 m').length,heights=data.terrain.values;let low=Infinity,high=-Infinity;for(const v of heights){low=Math.min(low,v);high=Math.max(high,v);}
@@ -146,6 +154,7 @@ function quality(){
  for(const [label,value] of values){const p=document.createElement('p'),strong=document.createElement('strong');strong.textContent=label+': ';p.append(strong,document.createTextNode(value));target.append(p);}
  for(const warning of data.warnings||[]){const p=document.createElement('p');p.className='warning';p.textContent=warning;target.append(p);}
  if(mesh?.architecture){const a=mesh.architecture;for(const text of [`Architektur: ${a.buildings} Gebäude/Teile, davon ${a.parts} Gebäudeteile und ${a.walls} Mauerabschnitte.`, `Dächer: ${a.roofTagged} modellierte Dachformen, davon ${a.roofEstimated} mit geschätzten Dachmaßen; ${a.unsupportedRoofs} nicht unterstützte Formen flach dargestellt.`, `${a.heightEstimated} Gebäudehöhen geschätzt oder aus Geschossen; ${a.minHeightFilled} erhöhte Teile für den Druck bis zum Untergrund unterstützt.`]){const p=document.createElement('p');p.textContent=text;target.append(p);}}
+ if(mesh?.architecture){const a=mesh.architecture,p=document.createElement('p');p.textContent='Kantenprüfung bestanden.'+(a.contactRepairs?' '+a.contactRepairs+' numerische Kontakte lokal unterhalb von 0,02 mm bereinigt.':'')+(a.zeroAreaRetriangulations?' Flächenlose Dreiecke ohne Änderung der Gebäudeform neu trianguliert.':'');target.append(p);}
  const note=document.createElement('p');note.textContent='Grundrisse und erfasste Dachformen werden geometrisch modelliert. Keine erfundenen Türme, Zinnen oder Fassaden. Die Detailtreue bleibt von den Quelldaten abhängig. Beim Druck sehr kleine Strukturen im Slicer prüfen.';target.append(note);
 }
 function landmarkControls(){
@@ -181,13 +190,39 @@ function markerControls(){
  }
  if(list.length>250){const note=document.createElement('p');note.className='hint';note.textContent='250 Einträge sichtbar. Bitte Suche oder Kategorie nutzen, um weitere Orte zu finden.';box.append(note);}
 }
-function makeWorker(){try{const url=globalThis.RS_WORKER_SOURCE?URL.createObjectURL(new Blob([globalThis.RS_WORKER_SOURCE],{type:'application/javascript'})):'worker.js';worker=new Worker(url);if(globalThis.RS_WORKER_SOURCE)URL.revokeObjectURL(url);worker.onmessage=e=>{const {id,result,error}=e.data;const pending=modelResolvers.get(id);modelResolvers.delete(id);if(error)pending?.reject(Error(error));else pending?.resolve(result);};worker.onerror=()=>{for(const p of modelResolvers.values())p.reject(Error('Modellberechnung wurde unterbrochen. Bitte einen kleineren Kartenausschnitt wählen.'));modelResolvers.clear();worker?.terminate();worker=null;};}catch{worker=null;}}
+function makeWorker(){
+ try{
+  const inline=globalThis.RS_WORKER_SOURCE,url=inline?URL.createObjectURL(new Blob([inline],{type:'application/javascript'})):'worker.js';
+  worker=new Worker(url);if(inline)URL.revokeObjectURL(url);
+  worker.onmessage=e=>{const {id,result,error,diagnostics,code,stack}=e.data,pending=modelResolvers.get(id);modelResolvers.delete(id);
+   if(error){const failure=Error(error);Object.assign(failure,{code,diagnostics});if(stack)failure.stack=stack;pending?.reject(failure);}else pending?.resolve(result);
+  };
+  worker.onerror=event=>{const failure=Error(event.message||'Modellberechnung wurde unterbrochen.');failure.code='WORKER_ERROR';
+   for(const p of modelResolvers.values())p.reject(failure);modelResolvers.clear();worker?.terminate();worker=null;
+  };
+ }catch(e){worker=null;R.diagnostics.event('Worker',{status:'unavailable',detail:e.message});}
+}
 makeWorker();
 async function build(){
- if(!data||settings.mode!=='model'||data.terrain.available===false)return;const id=++buildId;building=true;mesh=null;labels();const inputSettings=R.cleanSettings(settings),source=data;
- try{let result;if(worker){result=await new Promise((resolve,reject)=>{const timer=setTimeout(()=>{if(!modelResolvers.has(id))return;worker?.terminate();worker=null;for(const p of modelResolvers.values())p.reject(Error('Modellberechnung dauerte zu lange. Bitte einen kleineren Kartenausschnitt wählen und erneut berechnen.'));modelResolvers.clear();},45000);modelResolvers.set(id,{resolve:r=>{clearTimeout(timer);resolve(r);},reject:e=>{clearTimeout(timer);reject(e);}});worker.postMessage({id,data:source,settings:inputSettings});});}else{await nextFrame();result=R.buildMesh(source,inputSettings);}
- if(id!==buildId||source!==data)return;mesh=result;ensureViewer();viewer?.setMesh(mesh,settings);$('model-empty').hidden=!!viewer;quality();
- }catch(e){if(id===buildId)notify(e.message,'error');}finally{if(id===buildId){building=false;labels();}}
+ if(!data||settings.mode!=='model'||data.terrain.available===false)return false;
+ const id=++buildId;building=true;mesh=null;labels();const inputSettings=R.cleanSettings(settings),source=data,startedAt=Date.now();
+ R.diagnostics.event('3D-Geometrie',{status:'started',buildId:id,count:source.buildings.length});
+ if(!worker)makeWorker();
+ try{
+  let result;if(worker){result=await new Promise((resolve,reject)=>{
+   const timer=setTimeout(()=>{if(!modelResolvers.has(id))return;worker?.terminate();worker=null;
+    const error=Error('Die Modellberechnung hat ihr Zeitlimit erreicht. Die Kartendaten bleiben erhalten.');error.code='MODEL_TIMEOUT';
+    for(const p of modelResolvers.values())p.reject(error);modelResolvers.clear();
+   },120000);
+   modelResolvers.set(id,{resolve:r=>{clearTimeout(timer);resolve(r);},reject:e=>{clearTimeout(timer);reject(e);}});
+   worker.postMessage({id,data:source,settings:inputSettings});
+  });}else{await nextFrame();result=R.buildMesh(source,inputSettings);}
+  if(id!==buildId||source!==data)return false;
+  mesh=result;ensureViewer();viewer?.setMesh(mesh,settings);$('model-empty').hidden=!!viewer;quality();
+  R.diagnostics.event('3D-Geometrie',{status:'done',buildId:id,count:result.indices.length/3,durationMs:Date.now()-startedAt});return true;
+ }catch(e){
+  if(id===buildId)notify(e.message,'error',null,e,{stage:'3D-Geometrie',settings:inputSettings,data:source});return false;
+ }finally{if(id===buildId){building=false;labels();}}
 }
 function scheduleBuild(){if(settings.mode!=='model'||!data)return;clearTimeout(buildTimer);buildId++;building=true;mesh=null;labels();buildTimer=setTimeout(build,220);}
 function preview(){
@@ -206,7 +241,7 @@ function preview(){
   canvas.width=Math.max(1,Math.round(w*dpr));canvas.height=Math.max(1,Math.round(h*dpr));
   R.paintScene(canvas.getContext('2d'),scene,canvas.width/settings.paperW);
   $('poster-dim').title=scene.previewOmitted?'Die Vorschau wurde für flüssige Bearbeitung vereinfacht. Der Export enthält alle Kartenelemente.':'';
- }catch(e){notify('Postervorschau: '+e.message,'error');}
+ }catch(e){notify('Postervorschau: '+e.message,'error',null,e,{stage:'Postervorschau'});}
 }
 function previewDesign(){
  if(!data)return;try{
@@ -217,29 +252,41 @@ function previewDesign(){
   canvas.width=Math.max(1,Math.round(physicalW*factor*dpr));canvas.height=Math.max(1,Math.round(physicalH*factor*dpr));
   canvas.style.width=(physicalW*factor)+'px';canvas.style.height=(physicalH*factor)+'px';
   R.paintScene(canvas.getContext('2d'),scene,canvas.width/physicalW);const tip=target.querySelector('.design-tip');if(tip)tip.textContent=scene.previewOmitted?`Kartenstil in groß · ${scene.previewOmitted.toLocaleString('de-DE')} sehr kleine Elemente in der Vorschau vereinfacht · Export vollständig`:'Kartenstil in groß · Das vollständige Drucklayout folgt im nächsten Schritt';
- }catch(e){notify('Kartenstil-Vorschau: '+e.message,'error');}
+ }catch(e){notify('Kartenstil-Vorschau: '+e.message,'error',null,e,{stage:'Kartenstil'});}
 }
 let previewTimer;const schedulePreview=()=>{clearTimeout(previewTimer);previewTimer=setTimeout(()=>{if(currentView==='poster'||currentView==='design')preview();},120);};new ResizeObserver(schedulePreview).observe($('view-poster'));new ResizeObserver(schedulePreview).observe($('view-design'));
 const loadStepLabels={base:'Gebäude, Straßen & Wasser',pois:'Historische Orte',terrain:'Echte Geländehöhen',process:'Karte aufbereiten'};
-let activeLoadStages=[],loadStates={},loadStartedAt=0,lastBytesAt=0,loadClock=null;
+let activeLoadStages=[],loadStates={},loadStartedAt=0,lastBytesAt=0,loadClock=null,loadActivity='network';
+function updateLoadClock(){
+ const elapsed=Date.now()-loadStartedAt,idle=Date.now()-lastBytesAt;
+ $('loader-elapsed').textContent=clockString(elapsed);
+ $('loader-idle').textContent=loadActivity==='model'
+  ?'Alle Kartendaten sind geladen. Das 3D-Modell wird lokal berechnet; dafür sind keine weiteren Downloads nötig.'
+  :loadActivity==='process'
+   ?'Die Kartendaten sind geladen und werden lokal aufbereitet.'
+   :idle>=15000
+    ?'Seit '+Math.floor(idle/1000)+' s kein neuer Ladefortschritt. Warte auf Kartendaten; Wiederholungen sind zeitlich begrenzt.'
+    :'Nur empfangene Daten und abgeschlossene Pakete zählen als Ladefortschritt.';
+}
 function clockString(ms){const s=Math.floor(ms/1000);return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');}
 function resetLoader(terrain){
  activeLoadStages=['base','pois',...(terrain?['terrain']:[]),'process'];loadStates=Object.fromEntries(activeLoadStages.map(k=>[k,'pending']));
- loadStartedAt=lastBytesAt=Date.now();clearInterval(loadClock);$('progress').removeAttribute('value');$('loader-percent').textContent='Messung läuft …';$('loader-text').textContent='Die Daten werden Schritt für Schritt geladen.';
+ loadActivity='network';loadStartedAt=lastBytesAt=Date.now();clearInterval(loadClock);$('progress').removeAttribute('value');$('loader-percent').textContent='Messung läuft …';$('loader-text').textContent='Die Daten werden Schritt für Schritt geladen.';
  $('loader-detail').textContent='OpenStreetMap berechnet die Anfrage. Bisher noch keine Daten empfangen.';
  const list=$('loader-phases');list.replaceChildren();for(const [i,key] of activeLoadStages.entries()){
   const row=document.createElement('div');row.className='loader-phase';row.dataset.phase=key;const marker=document.createElement('span');marker.className='phase-icon';marker.textContent=String(i+1);const title=document.createElement('span');title.textContent=loadStepLabels[key];row.append(marker,title);list.append(row);
  }
- const tick=()=>{const elapsed=Date.now()-loadStartedAt,idle=Date.now()-lastBytesAt;$('loader-elapsed').textContent=clockString(elapsed);$('loader-idle').textContent=idle>=15000?'Seit '+Math.floor(idle/1000)+' s keine neuen Daten übertragen. Der Abruf endet bei anhaltendem Stillstand.':'Nur echte empfangene Daten und abgeschlossene Schritte zählen als Fortschritt.';};
- tick();loadClock=setInterval(tick,1000);refreshLoadSteps();
+ updateLoadClock();loadClock=setInterval(updateLoadClock,1000);refreshLoadSteps();
 }
 function refreshLoadSteps(){let done=0;for(const k of activeLoadStages){const st=loadStates[k];const el=document.querySelector('.loader-phase[data-phase="'+k+'"]');if(!el)continue;el.className='loader-phase '+(st==='done'?'complete':st==='skipped'?'skipped':st==='pending'?'':'active');el.querySelector('.phase-icon').textContent=st==='done'?'✓':st==='skipped'?'–':String(activeLoadStages.indexOf(k)+1);if(st==='done'||st==='skipped')done++;}
  $('loader-overall').textContent=`${done} von ${activeLoadStages.length} Schritten abgeschlossen`;
 }
 function progress(event,value){
- if(typeof event==='string'){$('loader-text').textContent=event;$('loader-detail').textContent=event;if(Number.isFinite(value)){$('progress').value=Math.max(0,Math.min(1,value));$('loader-percent').textContent=Math.round(value*100)+' % · Verarbeitung';}else{$('progress').removeAttribute('value');$('loader-percent').textContent='Verarbeitung';}return;}
+ globalThis.RS?.diagnostics?.event(typeof event==='string'?'3D-Geometrie':'Kartendaten',typeof event==='string'?{detail:event}:event||{});
+ if(typeof event==='string'){loadActivity='model';updateLoadClock();$('loader-stage').textContent='3D-Modell berechnen';$('loader-text').textContent=event;$('loader-detail').textContent=event;if(Number.isFinite(value)){$('progress').value=Math.max(0,Math.min(1,value));$('loader-percent').textContent=Math.round(value*100)+' % · Verarbeitung';}else{$('progress').removeAttribute('value');$('loader-percent').textContent='Verarbeitung';}return;}
  if(!event||typeof event!=='object')return;
  const {phase,status,detail,received,total,done,total:tilesTotal,count}=event;
+ if(phase==='process'||phase==='cache'){loadActivity='process';updateLoadClock();}
  if(phase==='cache'){
   for(const key of activeLoadStages)loadStates[key]='done';refreshLoadSteps();$('loader-percent').textContent='Aus Cache';$('progress').value=1;$('loader-detail').textContent=detail||'Lokal gespeichert';return;
  }
@@ -261,8 +308,8 @@ function progress(event,value){
 }
 
 async function load(){
- if(abort||exporting)return;try{R.validateBounds(bounds,settings.mode);}catch(e){notify(e.message,'error');return;}
- const controller=new AbortController(),epoch=++loadEpoch;abort=controller;
+ if(abort||exporting)return;try{R.validateBounds(bounds,settings.mode);}catch(e){notify(e.message,'error',null,e);return;}
+ const controller=new AbortController(),epoch=++loadEpoch;abort=controller;R.diagnostics.event('Kartendaten',{status:'started'});
  $('loader').hidden=false;$('loader-title').textContent=settings.mode==='poster'?'Deine Posterkarte entsteht.':'Dein Stadtrelief entsteht.';$('cancel-load').hidden=false;resetLoader(settings.mode==='model'||settings.contours||settings.hillshade);labels();const selected=bounds.slice();
  try{
   const loaded=await R.loadMap(selected,{signal:controller.signal,onProgress:progress,refresh:$('force-refresh').checked,mode:settings.mode,terrainRequired:settings.mode==='model'||settings.contours||settings.hillshade});
@@ -271,12 +318,12 @@ async function load(){
   if(data&&custom.length&&data.bounds.every((v,i)=>Math.abs(v-selected[i])<1e-5))loaded.landmarks.push(...custom);
   const sameLoadedArea=data&&data.bounds.every((v,i)=>Math.abs(v-selected[i])<1e-5);data=loaded;mesh=null;if(!sameLoadedArea)settings.landmarkOverrides={};landmarkControls();markerControls();
   if(settings.autoSubtitle)resolveRegion();
-  if(settings.mode==='model'){progress('Geschlossenes Relief wird berechnet',.92);await build();if(!mesh){panel('model');quality();return;}}
+  if(settings.mode==='model'){progress('Geschlossenes Relief wird berechnet');await build();if(!mesh){panel('model');quality();return;}}
   panel(settings.mode==='poster'?'style':'model');quality();preview();
   const coastWarnings=(data.warnings||[]).filter(w=>/Küste|Küsten|Meer|Meeresfläche/.test(w));
   const historicWarnings=(data.warnings||[]).filter(w=>/historische Orte|Sehenswürdigkeiten/i.test(w));
   notify(`${number(data.buildings.length,0)} Gebäude und ${number(data.roads.length,0)} Straßen-/Wasserlinien geladen.${data.terrain.available===false?' Für dieses 2D-Poster wurde kein Gelände benötigt.':' Echtes Gelände ist enthalten.'} ${coastWarnings.length?coastWarnings.slice(0,2).join(' '):historicWarnings.length?historicWarnings[0]:'Projekt über „Speichern“ sichern.'}`,coastWarnings.length||historicWarnings.length?'warning':'success');
- }catch(e){controller.abort();if(e.name==='AbortError')notify('Laden abgebrochen. Deine vorherigen Kartendaten bleiben erhalten.','info');else notify('Karte konnte nicht geladen werden: '+e.message+' Bereits vollständig geladene Pakete bleiben für „Erneut versuchen“ erhalten.','error',{label:'Erneut versuchen',run:()=>{$('force-refresh').checked=false;load();}});}
+ }catch(e){controller.abort();if(e.name==='AbortError')notify('Laden abgebrochen. Deine vorherigen Kartendaten bleiben erhalten.','info');else notify('Karte konnte nicht geladen werden: '+e.message+' Bereits vollständig geladene Pakete bleiben für „Erneut versuchen“ erhalten.','error',{label:'Erneut versuchen',run:()=>{$('force-refresh').checked=false;load();}},e,{stage:'Kartendaten'});}
  finally{if(epoch===loadEpoch){abort=null;clearInterval(loadClock);loadClock=null;$('loader').hidden=true;labels();}}
 }
 function download(blob,name){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),45000);}
@@ -285,10 +332,10 @@ async function prepareExport(){
  const blocked=commonReason();if(blocked){explain(blocked);return;}exporting=true;labels();$('loader').hidden=false;$('loader-title').textContent='Druckdatei wird vorbereitet.';$('cancel-load').hidden=true;$('loader-phases').replaceChildren();$('loader-idle').textContent='Der Export wird lokal berechnet.';$('loader-overall').textContent='Exportvorgang';$('loader-elapsed').textContent='';availability('export-poster','Die Druckdatei wird vorbereitet.');await nextFrame();
  try{const result=await R.exportPoster(data,settings,progress);const name=`${slug()}-${settings.paperW}x${settings.paperH}mm${result.dpi?'-'+Math.round(result.dpi)+'dpi':''}.${result.extension}`;pendingExport={...result,name};$('export-result').textContent=result.summary;$('export-filename').textContent=name;$('export-details').textContent=`${number(result.blob.size,0)} von 8.000.000 Byte · ${result.vector?'RGB · Vektor':'RGB · Rasterbild'}`;$('file-icon').textContent=result.extension.toUpperCase();$('export-warnings').replaceChildren();
  const warnings=[...result.warnings];if(stale())warnings.push('Der geänderte Ausschnitt wurde noch nicht geladen. Diese Datei verwendet die zuletzt geladenen Kartendaten.');for(const text of warnings){const p=document.createElement('p');p.className='warning';p.textContent=text;$('export-warnings').append(p);}$('export-dialog').showModal();}
- catch(e){notify(e.message,'error');}finally{exporting=false;$('loader').hidden=true;labels();}
+ catch(e){notify(e.message,'error',null,e);}finally{exporting=false;$('loader').hidden=true;labels();}
 }
 function sources(){return `RELIEF STUDIO 10\n${settings.title}\n\nAusschnitt (West, Süd, Ost, Nord): ${data.bounds.join(', ')}\nAbgerufen: ${data.capturedAt||'nicht angegeben'}\nOSM-Stand: ${data.osmTimestamp||'nicht angegeben'}\n\nKartendaten © OpenStreetMap-Mitwirkende — ODbL 1.0\nhttps://www.openstreetmap.org/copyright\n\nGelände: ${data.terrain.source||'Import'}\nQuellen/Lizenzen: https://github.com/tilezen/joerd/blob/master/docs/attribution.md\n\nGebäudehöhen: ausdrückliche OSM-Höhe, Geschosszahl × 3 m oder gekennzeichneter Standardwert.\nGeländeüberhöhung: ${settings.terrainFactor*100} %\nGebäudeüberhöhung: ${settings.buildingFactor*100} %\nZusätzliche Wahrzeichenüberhöhung: ${settings.landmarkFactor*100} %\n\nGrundrissgenaues 2.5D-Relief mit erfassten Dachformen, kein vermessenes Architekturmodell. Unbekannte Höhen werden geschätzt; erhöhte Teile werden für den Druck zum Boden unterstützt. Farben nur Vorschau.\nQuellenhinweise bei Weitergabe und Verkauf berücksichtigen; diese Datei ist keine Rechtsberatung.\n`;}
-async function modelExport(type){const blocked=modelReason();if(blocked){explain(blocked);return;}exporting=true;labels();notify('3D-Datei wird zusammengestellt.');await nextFrame();try{const blob=type==='stl'?new Blob([R.stl(mesh)],{type:'model/stl'}):R.model3mf(mesh,settings.title);download(blob,slug()+'.'+type);download(new Blob([sources()],{type:'text/plain;charset=utf-8'}),slug()+'-quellen.txt');notify(`${type.toUpperCase()} exportiert · ${number(blob.size/1e6,1)} MB · Maße in mm. Bitte Slicer prüfen.`);}catch(e){notify(e.message,'error');}finally{exporting=false;labels();}}
+async function modelExport(type){const blocked=modelReason();if(blocked){explain(blocked);return;}exporting=true;labels();notify('3D-Datei wird zusammengestellt.');await nextFrame();try{const blob=type==='stl'?new Blob([R.stl(mesh)],{type:'model/stl'}):R.model3mf(mesh,settings.title);download(blob,slug()+'.'+type);download(new Blob([sources()],{type:'text/plain;charset=utf-8'}),slug()+'-quellen.txt');notify(`${type.toUpperCase()} exportiert · ${number(blob.size/1e6,1)} MB · Maße in mm. Bitte Slicer prüfen.`);}catch(e){notify(e.message,'error',null,e);}finally{exporting=false;labels();}}
 for(const [key,size] of Object.entries(R.paperSizes)){const opt=document.createElement('option');opt.value=key;opt.textContent=key==='custom'?'Eigene Maße':key+(key.startsWith('A')?` · ${size[0]} × ${size[1]} mm`:'');$('paper').append(opt);}
 for(const [key,p] of Object.entries(R.palettes)){const button=document.createElement('button');button.type='button';button.dataset.theme=key;const swatch=document.createElement('span');swatch.style.background=`linear-gradient(130deg,${p.paper} 0 46%,${p.major} 47% 53%,${p.water} 54%)`;const label=document.createElement('small');label.textContent=p.name;button.append(swatch,label);button.addEventListener('click',()=>{settings.style=key;controls();persist();preview();if(mesh)viewer?.setMesh(mesh,settings);});$('themes').append(button);}
 all('[data-setting]').forEach(el=>el.addEventListener(el.type==='range'||el.type==='text'?'input':'change',()=>{
@@ -345,7 +392,7 @@ $('model-preset').onclick=()=>{Object.assign(settings,{terrainFactor:1,buildingF
 $('export-top').onclick=()=>{panel('export');if(commonReason())explain(commonReason());};$('export-poster').onclick=prepareExport;$('export-stl').onclick=()=>modelExport('stl');$('export-3mf').onclick=()=>modelExport('3mf');$('export-sources').onclick=()=>data&&download(new Blob([sources()],{type:'text/plain;charset=utf-8'}),slug()+'-quellen.txt');
 $('download-ready').onclick=()=>{if(pendingExport){download(pendingExport.blob,pendingExport.name);$('export-dialog').close();}};$('close-export').onclick=()=>$('export-dialog').close();
 $('save-project').onclick=()=>{if(!data)return;const { _contours,...saved}=data;download(new Blob([JSON.stringify({version:3,settings,data:saved})],{type:'application/json'}),slug()+'.relief.json');notify('Projekt inklusive Kartendaten gespeichert.');};
-$('open-project').onclick=()=>$('project-file').click();$('project-file').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;try{if(f.size>35000000)throw Error('Projektdatei ist größer als 35 MB.');const p=R.validateProject(JSON.parse(await f.text()));abort?.abort();settings=p.settings;data=p.data;locationEpoch++;bounds=data.bounds.slice();const info=R.boundsInfo(bounds);Object.assign(settings,{lon:+info.lon.toFixed(6),lat:+info.lat.toFixed(6),widthKm:+(info.w/1000).toFixed(3),heightKm:+(info.h/1000).toFixed(3)});mesh=null;buildId++;building=false;map.setBounds(bounds,true);landmarkControls();markerControls();chooseMode(settings.mode);if(settings.autoSubtitle)resolveRegion();if(settings.mode==='model'&&!building&&!mesh)await build();preview();quality();notify('Projekt und enthaltene Kartendaten geöffnet. Gespeicherter Modus: '+(settings.mode==='poster'?'Poster.':'3D-Relief.'),'success');}catch(e){notify('Import: '+e.message,'error');}};
+$('open-project').onclick=()=>$('project-file').click();$('project-file').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;try{if(f.size>35000000)throw Error('Projektdatei ist größer als 35 MB.');const p=R.validateProject(JSON.parse(await f.text()));abort?.abort();settings=p.settings;data=p.data;locationEpoch++;bounds=data.bounds.slice();const info=R.boundsInfo(bounds);Object.assign(settings,{lon:+info.lon.toFixed(6),lat:+info.lat.toFixed(6),widthKm:+(info.w/1000).toFixed(3),heightKm:+(info.h/1000).toFixed(3)});mesh=null;buildId++;building=false;map.setBounds(bounds,true);landmarkControls();markerControls();chooseMode(settings.mode,{buildModel:false});if(settings.autoSubtitle)resolveRegion();if(settings.mode==='model'&&!await build())return;preview();quality();notify('Projekt und enthaltene Kartendaten geöffnet. Gespeicherter Modus: '+(settings.mode==='poster'?'Poster.':'3D-Relief.'),'success');}catch(e){notify('Import: '+e.message,'error',null,e,{stage:'Import'});}};
 $('new-project').onclick=()=>{if(data&&!confirm('Neues Projekt starten? Ungespeicherte Änderungen gehen verloren.'))return;abort?.abort();data=mesh=null;buildId++;building=false;locationEpoch++;settings=R.cleanSettings();bounds=R.boundsFor(settings.lon,settings.lat,settings.widthKm,settings.heightKm);map.setBounds(bounds,true);$('model-empty').hidden=false;$('poster-empty').hidden=false;controls();persist();quality();landmarkControls();markerControls();panel('place');view('area');showChoice();};
 $('quality-toggle').onclick=()=>{$('quality-panel').hidden=!$('quality-panel').hidden;quality();};$('help').onclick=()=>$('help-dialog').showModal();$('close-help').onclick=()=>$('help-dialog').close();
 if(globalThis.RELIEF_SOURCE_FILES){$('download-code').hidden=false;$('download-code').onclick=()=>download(R.zip(globalThis.RELIEF_SOURCE_FILES),'relief-studio-source.zip');}
@@ -365,5 +412,5 @@ window.addEventListener('offline',()=>notify('Du bist offline. Gespeicherte Proj
 
 if(!globalThis.RELIEF_STATIC_PREVIEW&&location.protocol!=='file:')fetch('api/status',{signal:AbortSignal.timeout(2500),headers:{Accept:'application/json'}}).then(r=>r.ok?r.json():null).then(j=>{if(j?.application==='relief-studio'&&j.server===true){R.server=true;$('logout-form').hidden=false;}}).catch(()=>{});
 // Diagnostics are local only. The interface exposes no credentials or remote administration.
-Object.defineProperty(globalThis,'ReliefStudio',{value:{get settings(){return {...settings};},get data(){return data;},get mesh(){return mesh;},get building(){return building;},view,exportPoster:()=>R.exportPoster(data,settings),get mode(){return settings.mode;},get started(){return started;},get panel(){return currentPanel;},version:'12.0.0'}});
+Object.defineProperty(globalThis,'ReliefStudio',{value:{get settings(){return {...settings};},get data(){return data;},get mesh(){return mesh;},get building(){return building;},view,exportPoster:()=>R.exportPoster(data,settings),get mode(){return settings.mode;},get started(){return started;},get panel(){return currentPanel;},version:'15.0.0'}});
 })(globalThis.RS);

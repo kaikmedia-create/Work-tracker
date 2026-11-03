@@ -119,3 +119,6 @@
 .loader-card p.loader-idle{margin:8px 0 15px;font-size:10px;min-height:0;color:#8b987f;line-height:1.5}
 .loader-cancel{display:block;width:100%;margin:0;font-size:12px;padding:11px;border-radius:9px}
 @media(max-width:760px){.loader-card{padding:18px;max-height:100%}.loader-heading{margin-top:12px}.loader-card h3{font-size:18px}.loader-phase{padding:7px 0}}
+
+/* A compact, independent export action beside every error. */
+.notice .diagnostic-download{font-size:11px;padding:6px 9px;align-self:center;white-space:nowrap;min-height:30px}

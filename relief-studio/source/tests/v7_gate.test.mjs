@@ -1,5 +1,5 @@
-import test from 'node:test';import assert from 'node:assert/strict';import {readFile} from 'node:fs/promises';import {join,dirname} from 'node:path';import {fileURLToPath} from 'node:url';import vm from 'node:vm';import {webcrypto} from 'node:crypto';
-const root=dirname(dirname(fileURLToPath(import.meta.url)));const site=join(root,'site');
+import test from 'node:test';import assert from 'node:assert/strict';import {readFile} from 'node:fs/promises';import {existsSync} from 'node:fs';import {join,dirname} from 'node:path';import {fileURLToPath} from 'node:url';import vm from 'node:vm';import {webcrypto} from 'node:crypto';
+const root=dirname(dirname(fileURLToPath(import.meta.url)));const site=existsSync(join(root,'site'))?join(root,'site'):join(root,'..');
 const js=await readFile(join(site,'gate-v7.js'),'utf8');
 function instance(pin){let written='';const els=Object.fromEntries(['login','submit','status','pin'].map(id=>[id,{disabled:false,textContent:'',value:''}]));els.pin.value=pin;
  const document={getElementById:id=>els[id],open(){written='';},write(text){written+=text;},close(){}};

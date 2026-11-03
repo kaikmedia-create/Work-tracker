@@ -1,4 +1,4 @@
-/* Relief Studio 12. Exact-footprint, 2.5D solid construction.
+/* Relief Studio 15. Robust exact-footprint, 2.5D solid construction.
  * Terrain triangles and architectural roof planes are partitioned in XY.
  * Only the upper envelope is kept; vertical seams are stitched into one closed
  * surface, rather than rasterising buildings or exporting intersecting shells.
@@ -8,21 +8,29 @@
 'use strict';
 const EPS=1e-8, Q=1e7;
 const cross=(a,b,c)=>(b[0]-a[0])*(c[1]-a[1])-(b[1]-a[1])*(c[0]-a[0]);
-const area=p=>p.reduce((s,a,i)=>{const b=p[(i+1)%p.length];return s+a[0]*b[1]-b[0]*a[1];},0)/2;
+// Translate before the area sum: tiny valid roof intersections must not vanish
+// through cancellation of large absolute coordinates.
+const area=p=>p.length<3?0:p.slice(1,-1).reduce((s,b,i)=>s+cross(p[0],b,p[i+2]),0)/2;
 const eq=(a,b)=>Math.abs(a[0]-b[0])+Math.abs(a[1]-b[1])<EPS;
 const evalZ=(plane,p)=>plane[0]*p[0]+plane[1]*p[1]+plane[2];
 function tidy(poly){
  const a=[];for(const p of poly){if(p.every(Number.isFinite)&&(!a.length||!eq(a.at(-1),p)))a.push(p);}
  if(a.length>1&&eq(a[0],a.at(-1)))a.pop();
- if(a.length<3||Math.abs(area(a))<1e-10)return [];
+ if(a.length<3||Math.abs(area(a))<1e-18)return [];
  if(area(a)<0)a.reverse();return a;
 }
 // Intersect a convex polygon with ax+by+c >= 0.
 function half(poly,line){
+ // Classify and intersect against the SAME boundary. Using d >= -EPS with
+ // intersections at d = 0 can extrapolate outside an edge when both distances
+ // are negative; a microscopic roof edge can then duplicate whole terrain cells.
+ const norm=Math.hypot(line[0],line[1]);
+ if(!norm)return line[2]>=0?tidy(poly):[];
+ const signed=p=>{const d=evalZ(line,p)/norm;return Math.abs(d)<=EPS?0:d;};
  const out=[];for(let i=0;i<poly.length;i++){
-  const a=poly[i],b=poly[(i+1)%poly.length],da=evalZ(line,a),db=evalZ(line,b),ia=da>=-EPS,ib=db>=-EPS;
+  const a=poly[i],b=poly[(i+1)%poly.length],da=signed(a),db=signed(b),ia=da>=0,ib=db>=0;
   if(ia)out.push(a);
-  if(ia!==ib){const t=da/(da-db);out.push([a[0]+t*(b[0]-a[0]),a[1]+t*(b[1]-a[1])]);}
+  if(ia!==ib){const t=R.clamp(da/(da-db),0,1);out.push([a[0]+t*(b[0]-a[0]),a[1]+t*(b[1]-a[1])]);}
  }return tidy(out);
 }
 const negate=l=>l.map(v=>-v);
@@ -196,6 +204,38 @@ function overlay(faces,patch){
   }
  }return out;
 }
+// Coordinate welding may turn a convex boundary into A-B-A spikes. Remove
+// these zero-area walks before they can generate a pair of opposite triangles.
+function cleanCycle(input){
+ let ids=input.filter((id,i)=>!i||id!==input[i-1]);
+ if(ids.length>1&&ids[0]===ids.at(-1))ids.pop();
+ let changed=true;
+ while(changed&&ids.length>=3){changed=false;for(let j=0;j<ids.length;j++){
+  if(ids[(j+ids.length-1)%ids.length]===ids[(j+1)%ids.length]){
+   ids.splice(j,1);ids=ids.filter((id,k)=>!k||id!==ids[k-1]);
+   if(ids.length>1&&ids[0]===ids.at(-1))ids.pop();changed=true;break;
+  }
+ }}
+ return ids;
+}
+// Resolve only sub-print-resolution contact neighbourhoods. The surrounding
+// footprint and roof planes are untouched; every retry still must pass the
+// oriented-edge/watertightness check below. Never omit an entire building.
+function contactPatch(a,b,plane,kind,W,H,attempt=0){
+ const r=.002*Math.pow(1.6,attempt),dx=b[0]-a[0],dy=b[1]-a[1],length=Math.hypot(dx,dy);
+ const u=length>EPS?[dx/length,dy/length]:[1,0],v=[-u[1],u[0]];
+ const corners=[[a[0]-r*u[0]-r*v[0],a[1]-r*u[1]-r*v[1]],
+  [b[0]+r*u[0]-r*v[0],b[1]+r*u[1]-r*v[1]],
+  [b[0]+r*u[0]+r*v[0],b[1]+r*u[1]+r*v[1]],
+  [a[0]-r*u[0]+r*v[0],a[1]-r*u[1]+r*v[1]]];
+ const poly=splitBy(tidy(corners),[[-W/2,-H/2],[W/2,-H/2],[W/2,H/2],[-W/2,H/2]]).inside;
+ if(!poly.length)return null;
+ return {poly,box:bbox(poly),plane:[plane[0],plane[1],plane[2]+.0001],kind,building:-1,force:true,precisionRepair:true};
+}
+function seamError(contacts){
+ const e=Error('Gebäudekontakte konnten noch nicht vollständig verbunden werden.');
+ e.contacts=contacts;return e;
+}
 // Conforming edge subdivision prevents T-junctions at roof ridges, building
 // intersections, courtyards and terrain cells. The XY graph is shared by all roofs.
 function stitchSurface(faces,W,H,stats){
@@ -207,7 +247,7 @@ function stitchSurface(faces,W,H,stats){
   let key=k.join(',');if(groups.has(key))return groups.get(key);
   // Near a rounding boundary, numerical clipping can land in a neighboring bin.
   for(let x=-1;x<=1;x++)for(let y=-1;y<=1;y++)for(let z=-1;z<=1;z++){
-   const v=groups.get([k[0]+x,k[1]+y,k[2]+z].join(','));if(v&&Math.abs(v.dx-dx)<1e-7&&Math.abs(v.dy-dy)<1e-7&&Math.abs(v.c-c)<1e-7)return v;
+   const v=groups.get([k[0]+x,k[1]+y,k[2]+z].join(','));if(v&&Math.abs(v.dx-dx)<1e-7&&Math.abs(v.dy-dy)<1e-7&&Math.abs(v.c-c)<1e-6)return v;
   }
   const group={dx,dy,c,values:[]};groups.set(key,group);return group;
  };
@@ -223,8 +263,10 @@ function stitchSurface(faces,W,H,stats){
  const xy=[],xyIndex=new Map(),xyZ=[],edges=new Map();
  function vertex2(p){const ix=Math.round(p[0]*Q),iy=Math.round(p[1]*Q),key=ix+','+iy;let i=xyIndex.get(key);if(i!==undefined)return i;
   // A value lying on a quantisation boundary may round differently after
-  // clipping from opposite sides. Weld neighbours too, at sub-micron tolerance.
-  for(let x=-1;x<=1;x++)for(let y=-1;y<=1;y++){const n=xyIndex.get((ix+x)+','+(iy+y));if(n!==undefined&&Math.abs(xy[n][0]-p[0])+Math.abs(xy[n][1]-p[1])<2/Q)return n;}
+  // clipping from opposite sides. The acceptance radius is 2/Q, so the search
+  // MUST include two bins on each side (rounding can put valid matches two
+  // bins apart). A one-bin search leaves cracks that height repair cannot fix.
+  for(let x=-2;x<=2;x++)for(let y=-2;y<=2;y++){const n=xyIndex.get((ix+x)+','+(iy+y));if(n!==undefined&&Math.abs(xy[n][0]-p[0])+Math.abs(xy[n][1]-p[1])<2/Q)return n;}
   i=xy.length;xyIndex.set(key,i);xy.push(p);xyZ.push([]);return i;
  }
  function lower(a,x){let lo=0,hi=a.length;while(lo<hi){const mid=(lo+hi)>>1;if(a[mid]<x-EPS*8)lo=mid+1;else hi=mid;}return lo;}
@@ -234,10 +276,18 @@ function stitchSurface(faces,W,H,stats){
    const t=R.clamp((vals[j]-e.from)/(e.to-e.from),0,1);list.push(vertex2([e.a[0]+t*(e.b[0]-e.a[0]),e.a[1]+t*(e.b[1]-e.a[1])]));
   }
   if(e.to<e.from)list.reverse();e.ids=list.filter((v,i,a)=>!i||v!==a[i-1]);
-  for(let j=0;j<e.ids.length-1;j++){
-   const a=e.ids[j],b=e.ids[j+1],key=a<b?a+','+b:b+','+a;if(!edges.has(key))edges.set(key,[]);edges.get(key).push({a,b,f:e.f});
+ }
+ // Welding can collapse a sub-micron polygon into a backtracking edge. Such a
+ // face has no area and must not contribute two extra uses of the same seam.
+ for(let i=0;i<faces.length;i++){
+  const f=faces[i],ids=cleanCycle(f.edgeSegments.flatMap(e=>e.ids.slice(0,-1)));
+  f.boundaryIds=ids;
+  if(ids.length<3||Math.abs(area(ids.map(id=>xy[id])))<1e-18){f.boundaryIds=[];continue;}
+  for(let j=0;j<ids.length;j++){
+   const a=ids[j],b=ids[(j+1)%ids.length],key=a<b?a+','+b:b+','+a;
+   if(!edges.has(key))edges.set(key,[]);edges.get(key).push({a,b,f:i});
+   xyZ[a].push(evalZ(f.plane,xy[a]));
   }
-  for(const id of e.ids)xyZ[id].push(evalZ(faces[e.f].plane,xy[id]));
  }
  const positions=[],classes=[],indices=[],vertexMap=new Map(),heightIndex=new Map();
  function v3(id,z,kind){
@@ -253,30 +303,42 @@ function stitchSurface(faces,W,H,stats){
  function tri(a,b,c){if(a===b||b===c||c===a)return;indices.push(a,b,c);}
  // Centroid fans preserve every boundary split, including collinear vertices.
  for(const f of faces){
-  const ids=f.edgeSegments.flatMap(e=>e.ids.slice(0,-1));if(ids.length<3)continue;
+  const ids=f.boundaryIds;if(ids.length<3)continue;
+  const ring=cleanCycle(ids.map(id=>v3(id,evalZ(f.plane,xy[id]),f.kind)));
+  if(ring.length<3)continue;
+  if(ring.length===3){tri(...ring);continue;}
   const center=ids.reduce((p,id)=>[p[0]+xy[id][0]/ids.length,p[1]+xy[id][1]/ids.length],[0,0]),ci=vertex2(center),cz=evalZ(f.plane,center),mid=v3(ci,cz,f.kind);
-  for(let j=0;j<ids.length;j++){const a=ids[j],b=ids[(j+1)%ids.length];tri(mid,v3(a,evalZ(f.plane,xy[a]),f.kind),v3(b,evalZ(f.plane,xy[b]),f.kind));}
+  for(let j=0;j<ring.length;j++)tri(mid,ring[j],ring[(j+1)%ring.length]);
  }
- const boundary=[];
+ const boundary=[],contacts=[];
  for(const list of edges.values()){
-  if(list.length>2)throw Error('Überlagerte Gebäudekanten konnten nicht sauber verbunden werden. Bitte einen kleineren Ausschnitt wählen.');
+  if(list.length>2){
+   const first=list[0],a=xy[first.a],b=xy[first.b],mid=[(a[0]+b[0])/2,(a[1]+b[1])/2];
+   const upper=list.map(e=>faces[e.f]).sort((f,g)=>evalZ(g.plane,mid)-evalZ(f.plane,mid))[0];
+   contacts.push({a,b,plane:upper.plane,kind:upper.kind});continue;
+  }
   const e=list[0];
   if(list.length===1){
    const a=xy[e.a],b=xy[e.b],onEdge=(p,k,s)=>Math.abs(p[k]-s)<1e-5;
-   if(![[0,-W/2],[0,W/2],[1,-H/2],[1,H/2]].some(([k,s])=>onEdge(a,k,s)&&onEdge(b,k,s)))throw Error('Eine Gebäudenaht konnte nicht geschlossen werden. Bitte einen kleineren Ausschnitt wählen; kein unvollständiges Modell wurde exportiert.');
+   if(![[0,-W/2],[0,W/2],[1,-H/2],[1,H/2]].some(([k,s])=>onEdge(a,k,s)&&onEdge(b,k,s))){contacts.push({a,b,plane:faces[e.f].plane,kind:faces[e.f].kind});continue;}
    xyZ[e.a].push(0);xyZ[e.b].push(0);boundary.push(e);
   }
  }
+ if(contacts.length)throw seamError(contacts);
  // All heights meeting at each XY junction must also split vertical wall edges.
  for(let i=0;i<xyZ.length;i++){xyZ[i].sort((a,b)=>a-b);xyZ[i]=xyZ[i].filter((z,j,a)=>!j||z-a[j-1]>1e-7);}
  function wall(e,pA,pB,kind){
   const za=evalZ(pA,xy[e.a]),zb=evalZ(pA,xy[e.b]),wa=evalZ(pB,xy[e.a]),wb=evalZ(pB,xy[e.b]);
   if(Math.abs(za-wa)+Math.abs(zb-wb)<1e-7)return;
-  const ids=[v3(e.a,za,kind),v3(e.b,zb,kind)];
+  let ids=[v3(e.a,za,kind),v3(e.b,zb,kind)];
   const byB=xyZ[e.b].filter(z=>z<zb-1e-7&&z>wb+1e-7).reverse();for(const z of byB)ids.push(v3(e.b,z,kind));ids.push(v3(e.b,wb,kind),v3(e.a,wa,kind));
   for(const z of xyZ[e.a].filter(z=>z>wa+1e-7&&z<za-1e-7))ids.push(v3(e.a,z,kind));
   // For a CCW top boundary, outward wall orientation goes down first.
-  ids.reverse();const cx=(xy[e.a][0]+xy[e.b][0])/2,cy=(xy[e.a][1]+xy[e.b][1])/2,ci=vertex2([cx,cy]),mid=v3(ci,(za+zb+wa+wb)/4,kind);
+  // Endpoint height welding can collapse an entire wall, or one end of it.
+  // Do not emit opposite duplicate triangles for a zero-height seam.
+  ids=cleanCycle(ids);
+  if(ids.length<3)return;
+  ids.reverse();if(ids.length===3){tri(...ids);return;}const cx=(xy[e.a][0]+xy[e.b][0])/2,cy=(xy[e.a][1]+xy[e.b][1])/2,ci=vertex2([cx,cy]),mid=v3(ci,(za+zb+wa+wb)/4,kind);
   for(let j=0;j<ids.length;j++)tri(mid,ids[j],ids[(j+1)%ids.length]);
  }
  for(const list of edges.values()){
@@ -290,8 +352,43 @@ function stitchSurface(faces,W,H,stats){
  for(const e of boundary)tri(bottom,v3(e.b,0,4),v3(e.a,0,4));
  return {vertices:new Float32Array(positions),indices:new Uint32Array(indices),classes:new Uint8Array(classes)};
 }
+// A Float32 conversion can place one triangle exactly on an edge. Discarding
+// it creates a crack. Flip its shared diagonal instead: split the adjacent
+// non-degenerate triangle at the collinear middle vertex. Positions, surface
+// area, footprint, winding and volume are unchanged.
+function retriangulateZeroArea(mesh){
+ const p=mesh.vertices,t=mesh.indices,n=p.length/3,zero=[];
+ const area2=(a,b,c)=>{const x=p[b*3]-p[a*3],y=p[b*3+1]-p[a*3+1],z=p[b*3+2]-p[a*3+2],u=p[c*3]-p[a*3],v=p[c*3+1]-p[a*3+1],w=p[c*3+2]-p[a*3+2];return (y*w-z*v)**2+(z*u-x*w)**2+(x*v-y*u)**2;};
+ for(let i=0;i<t.length;i+=3)if(area2(t[i],t[i+1],t[i+2])===0)zero.push(i);
+ if(!zero.length)return {fixed:0,remaining:0};
+ const edges=new Map(),key=(a,b)=>Math.min(a,b)*n+Math.max(a,b);
+ function change(i,add){for(let j=0;j<3;j++){const k=key(t[i+j],t[i+(j+1)%3]);let list=edges.get(k);if(add){if(!list)edges.set(k,list=[]);list.push(i);}else{const at=list.indexOf(i);if(at>=0)list.splice(at,1);if(!list.length)edges.delete(k);}}}
+ for(let i=0;i<t.length;i+=3)change(i,true);
+ let fixed=0,pending=zero,progress=true;
+ while(pending.length&&progress){progress=false;const next=[];
+  for(const i of pending){
+   if(area2(t[i],t[i+1],t[i+2])!==0)continue;
+   const candidates=[0,1,2].sort((j,k)=>{
+    const length=q=>{const a=t[i+q],b=t[i+(q+1)%3];return (p[a*3]-p[b*3])**2+(p[a*3+1]-p[b*3+1])**2+(p[a*3+2]-p[b*3+2])**2;};return length(k)-length(j);
+   });let repaired=false;
+   for(const j of candidates){
+    const a=t[i+j],b=t[i+(j+1)%3],c=t[i+(j+2)%3],list=edges.get(key(a,b));if(list?.length!==2)continue;
+    const other=list[0]===i?list[1]:list[0];let d;
+    for(let q=0;q<3;q++)if(t[other+q]===b&&t[other+(q+1)%3]===a)d=t[other+(q+2)%3];
+    if(d===undefined||d===c)continue;
+    // The opposite point must lie on the selected segment, not its extension.
+    let dot=0;for(let q=0;q<3;q++)dot+=(p[c*3+q]-p[a*3+q])*(p[c*3+q]-p[b*3+q]);
+    if(dot>0||!area2(a,d,c)||!area2(d,b,c))continue;
+    change(i,false);change(other,false);t.set([a,d,c],i);t.set([d,b,c],other);change(i,true);change(other,true);
+    fixed++;progress=repaired=true;break;
+   }
+   if(!repaired)next.push(i);
+  }pending=next;
+ }
+ return {fixed,remaining:pending.length};
+}
 const raster=R.buildMesh;
-function buildArchitecture(data,settings,repairs=[]){
+function buildArchitecture(data,settings,repairs=[],attempt=0){
  const s=R.cleanSettings(settings),info=R.boundsInfo(data.bounds),w=s.modelWidth,h=w*info.h/info.w,scale=w/info.w;
  // More terrain samples cannot recover missing DEM data. Buildings no longer
  // depend on this terrain resolution at all.
@@ -300,7 +397,7 @@ function buildArchitecture(data,settings,repairs=[]){
  let low=Infinity;for(const z of data.terrain.values)low=Math.min(low,z);
  const terrainAt=(u,v)=>s.base+Math.max(0,R.sampleTerrain(data.terrain,u,v)-low)*scale*s.terrainFactor;
  const {patches,stats}=architecturePatches(data,s,terrainAt,w,h,scale);
- patches.push(...repairs);stats.contactRepairs=repairs.length;
+ patches.push(...repairs);stats.contactRepairs=repairs.length;stats.repairPasses=attempt;
  if(s.frame>0){const X=w/2+s.frame,Y=h/2+s.frame;
   for(const poly of [[[-X,-Y],[X,-Y],[X,-h/2],[-X,-h/2]],[[-X,h/2],[X,h/2],[X,Y],[-X,Y]],[[-X,-h/2],[-w/2,-h/2],[-w/2,h/2],[-X,h/2]],[[w/2,-h/2],[X,-h/2],[X,h/2],[w/2,h/2]]])
    patches.unshift({poly,box:bbox(poly),plane:[0,0,s.base+1.4],kind:4,building:-1,force:true});
@@ -321,27 +418,43 @@ function buildArchitecture(data,settings,repairs=[]){
   faces.push(...local);
   if(faces.length>800000)throw Error('Modell überschreitet das sichere Detailbudget. Bitte kleineren Ausschnitt wählen.');
  }
- const result=stitchSurface(faces,W,H,stats);
+ let result;
+ try{result=stitchSurface(faces,W,H,stats);}
+ catch(e){
+  if(!e.contacts)throw e;
+  if(attempt>=4||repairs.length+e.contacts.length>100){
+   const failure=Error('Die Gebäudekontakte benötigen eine genauere Prüfung. Das fehlerhafte Modell wurde nicht zum Export freigegeben.');
+   failure.code='GEOMETRY_CONTACTS';failure.diagnostics={attempt,contactCount:e.contacts.length,repairCount:repairs.length,buildings:stats.buildings,contacts:e.contacts.slice(0,24)};throw failure;
+  }
+  const additions=e.contacts.map(c=>contactPatch(c.a,c.b,c.plane,c.kind,W,H,attempt)).filter(Boolean);
+  if(!additions.length)throw e;
+  return buildArchitecture(data,settings,repairs.concat(additions),attempt+1);
+ }
+ const degenerate=retriangulateZeroArea(result);
+ stats.zeroAreaRetriangulations=degenerate.fixed;
  // Two footprints touching at a single XY point create a non-manifold vertical
- // edge. Regularise ONLY those contacts with a 0.004 mm-wide connection, below
- // print resolution; never globally inflate landmark footprints.
+ // edge. Regularise ONLY the reported contacts, initially 0.004 mm wide
+ // (at most 0.016384 mm after four bounded passes). Never inflate all buildings.
  const count=result.vertices.length/3,usage=new Map(),ix=result.indices,vs=result.vertices;
  for(let i=0;i<ix.length;i+=3)for(let j=0;j<3;j++){
   const a=ix[i+j],b=ix[i+(j+1)%3],k=Math.min(a,b)*count+Math.max(a,b),v=usage.get(k)||[0,0];v[0]++;v[1]+=a<b?1:-1;usage.set(k,v);
  }
  const bad=[...usage].filter(([,v])=>v[0]!==2||v[1]!==0);
  if(bad.length){
+  if(attempt>=4||repairs.length+bad.length>100)throw Error('Die Gebäudegeometrie enthält eine nicht druckbare Naht. Das fehlerhafte Modell wurde nicht zum Export freigegeben.');
   const additions=[];
-  for(const [key,val] of bad){const a=Math.floor(key/count),b=key%count,x=vs[a*3],y=vs[a*3+1],z=Math.max(vs[a*3+2],vs[b*3+2])+.002;
-   if(val[0]!==4||Math.abs(x-vs[b*3])+Math.abs(y-vs[b*3+1])>1e-6)break;
-   const r=.002,poly=tidy([[Math.max(-w/2,x-r),Math.max(-h/2,y-r)],[Math.min(w/2,x+r),Math.max(-h/2,y-r)],[Math.min(w/2,x+r),Math.min(h/2,y+r)],[Math.max(-w/2,x-r),Math.min(h/2,y+r)]]);
-   if(!poly.length)break;additions.push({poly,box:bbox(poly),plane:[0,0,z],kind:result.classes[a],building:-1});
+  for(const [key,val] of bad){
+   const ai=Math.floor(key/count)*3,bi=(key%count)*3,a=[vs[ai],vs[ai+1]],b=[vs[bi],vs[bi+1]],dx=b[0]-a[0],dy=b[1]-a[1],len2=dx*dx+dy*dy;
+   const za=vs[ai+2],zb=vs[bi+2],slope=len2>EPS*EPS?(zb-za)/len2:0;
+   const plane=len2>EPS*EPS?[slope*dx,slope*dy,za-slope*(dx*a[0]+dy*a[1])]:[0,0,Math.max(za,zb)];
+   const p=contactPatch(a,b,plane,result.classes[ai/3],W,H,attempt);if(p)additions.push(p);
   }
-  if(!repairs.length&&additions.length===bad.length&&additions.length<=100)return buildArchitecture(data,settings,additions);
-  throw Error('Die Gebäudegeometrie enthält eine nicht druckbare Naht. Bitte einen kleineren Ausschnitt wählen. Ein fehlerhaftes Modell wurde nicht freigegeben.');
+  if(!additions.length)throw Error('Eine geometrische Naht konnte nicht repariert werden. Kein fehlerhaftes Modell wurde exportiert.');
+  return buildArchitecture(data,settings,repairs.concat(additions),attempt+1);
  }
+ if(degenerate.remaining)throw Error('Eine flächenlose Gebäudenaht konnte nicht aufgelöst werden. Kein fehlerhaftes Modell wurde exportiert.');
  let zmax=0;for(let i=2;i<result.vertices.length;i+=3)zmax=Math.max(zmax,result.vertices[i]);
- return {...result,width:W,height:H,zmax,grid:[0,0],cell:terrain.cell,kind:'architecture',architectureVersion:12,architecture:stats,missed:stats.omitted,estimated:stats.heightEstimated,buildingCount:stats.buildings,terrainGrid:terrain.grid};
+ return {...result,width:W,height:H,zmax,grid:[0,0],cell:terrain.cell,kind:'architecture',architectureVersion:12,geometryKernelVersion:15,architecture:stats,missed:stats.omitted,estimated:stats.heightEstimated,buildingCount:stats.buildings,terrainGrid:terrain.grid};
 }
 Object.assign(R,{buildRasterMesh:raster,buildMesh:buildArchitecture,architecture:{decompose,roofSpec,roofFrame,roofPieces,half,overlay,stitchSurface,buildArchitecture}});
 })(globalThis.RS);

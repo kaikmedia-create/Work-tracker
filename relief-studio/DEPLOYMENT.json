@@ -1,16 +1,28 @@
 {
-  "version": "14.0.0",
+  "version": "15.0.0",
   "account": "kaikmedia-create",
   "repository": "kaikmedia-create/Work-tracker",
   "folder": "relief-studio",
   "target": "github-pages",
-  "status": "release-prepared-check-github-actions",
-  "base_commit": "d038b40f3aba4e68a30f737006a00402c45931fa",
+  "status": "requires-deployment-check",
+  "base_commit": "08d8b87ed7e2b2070763c2311033f6609260f701",
   "entry": "index.html",
-  "gate": "gate-v14.js",
+  "gate": "gate-v15.js",
   "base_package": "bundle10.json",
-  "updates": ["upgrade11.json", "upgrade12.json", "upgrade13.json", "upgrade14.json"],
+  "updates": [
+    "upgrade11.json",
+    "upgrade12.json",
+    "upgrade13.json",
+    "upgrade14.json",
+    "upgrade15.json"
+  ],
   "source_in_repository": "Hash-verified release deltas; npm prestart/pretest reconstruct runtime source and tests automatically via source/tools/prepare_release14.mjs.",
-  "checks": {"node_passed": 133, "browser_worker_export_passed": 12, "real_weinheim": "separate-live-test-required"},
-  "gating": "static preview PIN; not server-side access control"
+  "checks": {
+    "node_passed": 133,
+    "browser_worker_export_passed": 12,
+    "real_weinheim": "separate-live-test-required"
+  },
+  "gating": "static preview PIN; not server-side access control",
+  "code_commit": null,
+  "note": "Release 15 source package tested locally. No push or live-deployment confirmation in this session. No complete private user diagnostic included."
 }
