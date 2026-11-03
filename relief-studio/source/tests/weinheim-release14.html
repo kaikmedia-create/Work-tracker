@@ -13,9 +13,15 @@ async function run(){
  const report={release:14,sizeKm:size,bounds,realData:true,status:'running',startedAt:new Date().toISOString()};window.testReport=report;
  let worker;
  try{
+  const rp=await(await fetch('../../upgrade14-recovery.json',{cache:'no-store'})).json(),rd=rp.changes?.['public/data.js'];
+  let ds=await(await fetch('../public/data.js',{cache:'no-store'})).text();
+  if(!rd)throw Error('Wiederaufnahme-Update fehlt.');
+  if(await hash(ds)===rd.base){const lines=ds.split('\n');for(const [i,n,add] of rd.edits.slice().reverse())lines.splice(i,n,...add);ds=lines.join('\n');}
+  if(await hash(ds)!==rd.result)throw Error('Lader-Prüfsumme stimmt nicht.');
+  (0,eval)(ds);
   const loader=RS.createDataLoader({config:{sessionMs:180000}});
   const data=await loader.loadMap(bounds,{mode:'model',terrainRequired:true,onProgress:e=>{$('progress').textContent=JSON.stringify({elapsedSeconds:Math.round((Date.now()-started)/1000),...e});}});
-  window.testData=data;report.buildings=data.buildings.length;report.terrain={cols:data.terrain.cols,rows:data.terrain.rows,tileCount:data.terrain.tileCount};report.osmTimestamp=data.osmTimestamp;
+  window.testData=data;report.buildings=data.buildings.length;report.terrain={cols:data.terrain.cols,rows:data.terrain.rows,tileCount:data.terrain.tileCount};report.osmTimestamp=data.osmTimestamp;report.loadStats=data.loadStats;
   if(!data.buildings.length||data.terrain.available===false)throw Error('Pflichtdaten fehlen; kein bestandener Stadtmodelltest.');
   $('progress').textContent=report.buildings+' Gebäude und Gelände geladen. 3D-Berechnung läuft lokal.';
   const manifest=await(await fetch('../../upgrade14.json',{cache:'no-store'})).json(),sources=[];

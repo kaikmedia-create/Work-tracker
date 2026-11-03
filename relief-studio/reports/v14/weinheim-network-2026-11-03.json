@@ -1,0 +1,14 @@
+{
+  "scope": "Real Weinheim 4x4 km test before automatic continuation was added",
+  "release": 14,
+  "bounds": [8.656308300207316,49.53103039037301,8.711691699792684,49.56696300195899],
+  "startedAt": "2026-11-03T07:40:20.503Z",
+  "status": "failed",
+  "elapsedMs": 180002,
+  "lastProgress": "4 von 5 Kartenpaketen vollständig geladen.",
+  "error": "Gesamtzeit erreicht. Vollständige Datenpakete sind gespeichert; „Erneut versuchen“ lädt nur Fehlendes.",
+  "modelBuilt": false,
+  "nextChange": "At most one automatic continuation from completed cache packages; never for zero progress, explicit cancellation, or rate limits.",
+  "regressionTests": {"total":139,"passed":139,"failed":0,"freshSourceReconstructionAlsoPassed":true},
+  "note":"No real Weinheim geometry success is claimed by this report."
+}

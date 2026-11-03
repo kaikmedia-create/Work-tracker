@@ -2,7 +2,7 @@
 (function(){
 'use strict';
 const $=id=>document.getElementById(id),bytes=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
-async function get(name){const r=await fetch(name+'?v=14',{cache:'no-store'});if(!r.ok)throw Error('Datei nicht erreichbar ('+r.status+'): '+name+'. Verbindung prüfen und neu laden.');return r;}
+async function get(name){const r=await fetch(name+'?v=14-r1',{cache:'no-store'});if(!r.ok)throw Error('Datei nicht erreichbar ('+r.status+'): '+name+'. Verbindung prüfen und neu laden.');return r;}
 async function combine(names){const list=await Promise.all(names.map(async name=>bytes((await (await get(name)).text()).trim())));const total=list.reduce((n,p)=>n+p.length,0);if(total>1500000)throw Error('Datenpaket ist ungewöhnlich groß.');const out=new Uint8Array(total);let at=0;for(const p of list){out.set(p,at);at+=p.length;}return out;}
 $('login').onsubmit=async e=>{
  e.preventDefault();$('submit').disabled=true;$('status').textContent='Studio 14 wird geöffnet …';
@@ -62,6 +62,11 @@ $('login').onsubmit=async e=>{
     const lines=files[name].split('\n');for(const [start,count,add] of c.edits.slice().reverse())lines.splice(start,count,...add);
     const value=lines.join('\n');if(await hash(value)!==c.result)throw Error('Geometrie-Prüfsumme stimmt nicht: '+name);files[name]=value;
    }
+   const recovery14=await (await get('upgrade14-recovery.json')).json();
+   const rd=recovery14.changes?.['public/data.js'];
+   if(recovery14.version!==14||!rd||!Array.isArray(rd.edits)||await hash(files['public/data.js'])!==rd.base)throw Error('Quellstand für automatische Wiederaufnahme stimmt nicht.');
+   const dl=files['public/data.js'].split('\n');for(const [i,n,add] of rd.edits.slice().reverse())dl.splice(i,n,...add);
+   const recovered=dl.join('\n');if(await hash(recovered)!==rd.result)throw Error('Wiederaufnahme-Prüfsumme stimmt nicht.');files['public/data.js']=recovered;
    pack.version=14;
 
   let html=files['public/index.html'];html=html.replace('<link rel="stylesheet" href="style.css">','<style>'+files['public/style.css']+'</style>');

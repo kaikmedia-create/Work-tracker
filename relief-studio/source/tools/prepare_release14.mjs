@@ -20,15 +20,17 @@ if(packed.length>1500000||createHash('sha256').update(packed).digest('hex')!==ma
 const patch=JSON.parse(gunzipSync(packed,{maxOutputLength:4000000}).toString('utf8'));
 if(patch.version!==14||!patch.changes)throw Error('Invalid release 14 source delta.');
 const hash=s=>createHash('sha256').update(s,'utf8').digest('hex'),planned=[];
-const entries={...patch.changes,...patch.sourceChanges};
+const recovery=JSON.parse(await readFile(resolve(root,'../upgrade14-recovery.json'),'utf8'));
+if(recovery.version!==14||!recovery.changes?.['public/data.js']||Object.keys(recovery.changes).length!==1)throw Error('Invalid recovery source delta.');
+const entries={...patch.changes,...patch.sourceChanges,...recovery.changes,...recovery.sourceChanges};
 for(const [name,c] of Object.entries(entries)){
  const path=resolve(root,name);
  if(!path.startsWith(root+sep)||!(/^(public|tests|tools)\//).test(name))throw Error('Unsafe release path: '+name);
  let before=null;try{before=await readFile(path,'utf8');}catch(e){if(e.code!=='ENOENT')throw e;}
  if(before!==null&&hash(before)===c.result)continue;
- if((before===null?null:hash(before))!==c.base)throw Error('Uncommitted or different source; refusing to overwrite: '+name);
+ if((before===null?null:hash(before))!==c.base&&!(c.compatibleBases||[]).includes(before===null?null:hash(before)))throw Error('Uncommitted or different source; refusing to overwrite: '+name);
  let after;
- if(c.base===null)after=c.content;
+ if(c.content!==undefined)after=c.content;
  else{
   const lines=before.split('\n');
   for(const [start,count,add] of c.edits.slice().reverse()){
