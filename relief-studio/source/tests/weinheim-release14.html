@@ -1,0 +1,47 @@
+<!doctype html><html lang="de"><meta charset="utf-8"><meta name="robots" content="noindex"><title>Weinheim: Release-14-End-to-End-Prüfung</title>
+<style>body{font:15px system-ui;margin:24px;background:#f5f5f3;color:#22312d}pre{white-space:pre-wrap;overflow-wrap:anywhere}canvas{width:900px;max-width:100%;height:600px;background:#eee}button{padding:12px}</style>
+<h1>Weinheim: reale Karten- und Geländedaten</h1><p>Release 14. OSM © OpenStreetMap contributors, ODbL; Gelände Mapzen/AWS. Keine synthetischen Ersatzdaten.</p>
+<button id="run">Weinheim prüfen</button><strong id="state">BEREIT</strong><pre id="progress"></pre><canvas id="model"></canvas><pre id="result"></pre>
+<script src="../public/core.js"></script><script src="../public/data.js"></script><script src="../public/viewer.js"></script>
+<script>
+'use strict';
+const $=id=>document.getElementById(id),params=new URLSearchParams(location.search);
+const hash=async s=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s))),v=>v.toString(16).padStart(2,'0')).join('');
+async function run(){
+ $('run').disabled=true;$('state').textContent='LÄUFT';
+ const started=Date.now(),size=Math.min(5,Math.max(.5,Number(params.get('size'))||4)),bounds=RS.boundsFor(8.684,49.549,size,size);
+ const report={release:14,sizeKm:size,bounds,realData:true,status:'running',startedAt:new Date().toISOString()};window.testReport=report;
+ let worker;
+ try{
+  const loader=RS.createDataLoader({config:{sessionMs:180000}});
+  const data=await loader.loadMap(bounds,{mode:'model',terrainRequired:true,onProgress:e=>{$('progress').textContent=JSON.stringify({elapsedSeconds:Math.round((Date.now()-started)/1000),...e});}});
+  window.testData=data;report.buildings=data.buildings.length;report.terrain={cols:data.terrain.cols,rows:data.terrain.rows,tileCount:data.terrain.tileCount};report.osmTimestamp=data.osmTimestamp;
+  if(!data.buildings.length||data.terrain.available===false)throw Error('Pflichtdaten fehlen; kein bestandener Stadtmodelltest.');
+  $('progress').textContent=report.buildings+' Gebäude und Gelände geladen. 3D-Berechnung läuft lokal.';
+  const manifest=await(await fetch('../../upgrade14.json',{cache:'no-store'})).json(),sources=[];
+  const chunks=await Promise.all(manifest.parts.map(async n=>Uint8Array.from(atob((await(await fetch('../../'+n,{cache:'no-store'})).text()).trim()),c=>c.charCodeAt(0))));
+  const bytes=new Uint8Array(chunks.reduce((s,c)=>s+c.length,0));let offset=0;for(const c of chunks){bytes.set(c,offset);offset+=c.length;}
+  const digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),v=>v.toString(16).padStart(2,'0')).join('');
+  if(digest!==manifest.sha256)throw Error('Update-Prüfsumme stimmt nicht.');
+  const patch=JSON.parse(await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))).text());
+  for(const name of ['core.js','architecture.js']){
+   let source=await(await fetch('../public/'+name,{cache:'no-store'})).text();const c=patch.changes['public/'+name],h=await hash(source);
+   if(h===c.base){const lines=source.split('\n');for(const [i,n,add] of c.edits.slice().reverse())lines.splice(i,n,...add);source=lines.join('\n');}
+   if(await hash(source)!==c.result)throw Error('Geometrie-Quellstand stimmt nicht: '+name);
+   sources.push(source);
+  }
+  const code=sources.join('\n')+`\nonmessage=async e=>{try{const t=performance.now(),m=RS.buildMesh(e.data.data,e.data.settings);const stl=RS.stl(m),mf=await RS.model3mf(m,'Weinheim').arrayBuffer();postMessage({mesh:m,buildMs:Math.round(performance.now()-t),stlBytes:stl.byteLength,threeMFBytes:mf.byteLength});}catch(error){postMessage({error:error.message});}};`;
+  const url=URL.createObjectURL(new Blob([code],{type:'text/javascript'}));worker=new Worker(url);URL.revokeObjectURL(url);
+  const result=await new Promise((resolve,reject)=>{const timer=setTimeout(()=>{worker.terminate();reject(Error('3D-Berechnung nach 120 Sekunden nicht abgeschlossen.'));},120000);worker.onmessage=e=>{clearTimeout(timer);resolve(e.data);};worker.onerror=e=>{clearTimeout(timer);reject(Error(e.message));};worker.postMessage({data,settings:{modelWidth:200,frame:4,resolution:161,mode:'model'}});});
+  if(result.error)throw Error(result.error);
+  const mesh=result.mesh,n=mesh.vertices.length/3,edges=new Map();
+  for(let i=0;i<mesh.indices.length;i+=3)for(let j=0;j<3;j++){const a=mesh.indices[i+j],b=mesh.indices[i+(j+1)%3],key=Math.min(a,b)*n+Math.max(a,b),v=edges.get(key)||[0,0];v[0]++;v[1]+=a<b?1:-1;edges.set(key,v);}
+  if([...edges.values()].some(v=>v[0]!==2||v[1]!==0))throw Error('Unabhängige Kantenprüfung fehlgeschlagen.');
+  report.status='passed';report.buildMs=result.buildMs;report.triangles=mesh.indices.length/3;report.buildingCount=mesh.buildingCount;report.omittedBuildings=mesh.missed;report.architecture=mesh.architecture;report.stlBytes=result.stlBytes;report.threeMFBytes=result.threeMFBytes;report.closedOrientedEdges=true;
+  if(mesh.missed>0)throw Error('Nicht alle Gebäude übernommen; kein uneingeschränkt bestandener Test.');
+  const viewer=new RS.ModelViewer($('model'));viewer.setMesh(mesh,RS.cleanSettings());window.testMesh=mesh;
+ }catch(e){report.status='failed';report.error=e.message;}
+ finally{worker?.terminate();report.elapsedMs=Date.now()-started;$('state').textContent=report.status==='passed'?'PASS':'FAIL';$('result').textContent=JSON.stringify(report,null,2);}
+}
+$('run').onclick=run;if(params.get('run')==='1')run();
+</script></html>

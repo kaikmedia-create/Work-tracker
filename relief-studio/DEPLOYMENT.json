@@ -1,22 +1,16 @@
 {
-  "version": "13.0.0",
+  "version": "14.0.0",
   "account": "kaikmedia-create",
   "repository": "kaikmedia-create/Work-tracker",
   "folder": "relief-studio",
   "target": "github-pages",
-  "status": "published",
-  "base_commit": "85d226066ee8644fe9abf169bade21b242e95b41",
-  "code_commit": null,
+  "status": "release-prepared-check-github-actions",
+  "base_commit": "d038b40f3aba4e68a30f737006a00402c45931fa",
   "entry": "index.html",
-  "gate": "gate-v13.js",
+  "gate": "gate-v14.js",
   "base_package": "bundle10.json",
-  "updates": [
-    "upgrade11.json",
-    "upgrade12.json",
-    "upgrade13.json"
-  ],
-  "source_in_repository": "Expanded v13 source with hash-verified v13 GitHub Pages delta.",
-  "source_in_download": "fully expanded v12 source",
-  "gating": "static preview PIN; not server-side access control",
-  "note": "GitHub Pages v13 deployment succeeded on main; static preview excludes server.mjs from its encrypted bundle. The gate applies required browser deltas and skips only the optional server patch."
+  "updates": ["upgrade11.json", "upgrade12.json", "upgrade13.json", "upgrade14.json"],
+  "source_in_repository": "Hash-verified release deltas; npm prestart/pretest reconstruct runtime source and tests automatically via source/tools/prepare_release14.mjs.",
+  "checks": {"node_passed": 133, "browser_worker_export_passed": 12, "real_weinheim": "separate-live-test-required"},
+  "gating": "static preview PIN; not server-side access control"
 }
