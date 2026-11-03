@@ -4,6 +4,10 @@
 (function(R){
 'use strict';
 const OVERPASS=['https://overpass.private.coffee/api/interpreter','https://maps.mail.ru/osm/tools/overpass/api/interpreter','https://overpass-api.de/api/interpreter'];
+// Independent Europe-only Overpass extract. Never query it outside its coverage.
+const EUROPE_OVERPASS='https://ovp.dresel.systems/api/interpreter';
+const europeBounds=b=>Array.isArray(b)&&b.length===4&&b[0]>=-25&&b[2]<=45&&b[1]>=34&&b[3]<=72;
+const endpointsFor=b=>europeBounds(b)?[EUROPE_OVERPASS,...OVERPASS]:OVERPASS;
 const BODY_IDLE_MS=26000,BODY_MAX_MS=185000;
 const abortError=()=>new DOMException('Abgebrochen','AbortError');
 const send=(fn,e)=>{if(typeof fn==='function')fn(e);};
@@ -75,7 +79,7 @@ function mergeOSM(raws){const objects=new Map(),dates=[];for(const raw of raws){
 // Dependency injection lets tests exercise actual network/caching code, not replace
 // the complete loader with a fake success function.
 function createDataLoader(options={}){
- const cfg={headerMs:33000,serverHeaderMs:70000,poiMs:12000,idleMs:BODY_IDLE_MS,bodyMs:BODY_MAX_MS,sessionMs:180000,retryMs:800,maxRequests:48,resumeAttempts:1,...options.config};
+ const cfg={headerMs:33000,serverHeaderMs:70000,poiMs:12000,idleMs:BODY_IDLE_MS,bodyMs:BODY_MAX_MS,sessionMs:180000,retryMs:800,maxRequests:64,resumeAttempts:1,...options.config};
  const fetcher=options.fetch||((...a)=>fetch(...a)),cache=options.cache||createCache(),flights=new Map(),queue=[];
  let active=0,preferred=0,cooldown=0;
  function drain(){while(active<2&&queue.length){const job=queue.shift();job.signal?.removeEventListener('abort',job.cancel);if(job.signal?.aborted){job.reject(abortError());continue;}active++;Promise.resolve().then(job.work).then(job.resolve,job.reject).finally(()=>{active--;drain();});}}
@@ -102,24 +106,27 @@ function createDataLoader(options={}){
   return shared((R.server?'server:':'public:')+key,signal,onProgress,async(signal,emit)=>{
    // Shared across simultaneous same-area loads; successful package persists before
    // the overall map completes, so retrying never discards already finished work.
-   let last;const attempts=layer==='pois'||R.server?1:OVERPASS.length,startEndpoint=preferred;
+   let last;const endpoints=endpointsFor(b),attempts=layer==='pois'||R.server?1:endpoints.length,startEndpoint=preferred,failures=[];
    for(let i=0;i<attempts;i++){
     check(signal);if(Date.now()<cooldown)throw error('RATE_LIMIT',`Kartendienst-Pause: noch ${Math.ceil((cooldown-Date.now())/1000)} s. Bereits geladene Pakete bleiben gespeichert.`,{retryAt:cooldown});
-    const index=(startEndpoint+i)%OVERPASS.length,endpoint=OVERPASS[index];
-    emit({phase,status:'waiting',attempt:i+1,attempts,detail:i?'Anderer Datendienst nach Verbindungsfehler.':'Kleines Datenpaket wird angefragt; bisher keine Bytes.'});
+    const index=(startEndpoint+i)%endpoints.length,endpoint=endpoints[index],service=R.server?'Studio-Server':new URL(endpoint).hostname;
+    emit({phase,status:'waiting',attempt:i+1,attempts,detail:(i?'Anderer Datendienst wird versucht: ':'Kartenpaket wird angefragt: ')+service});
     try{
-     const value=await slot(signal,()=>wire(R.server?`api/map?bbox=${encodeURIComponent(b.join(','))}&layer=${layer}&mode=${opts.mode||'poster'}`:endpoint,R.server?{}:{method:'POST',body:new URLSearchParams({data:layer==='pois'?poiQuery(b):osmQuery(b,layer)})},signal,e=>emit({phase,layer,attempt:i+1,attempts,...e}),layer==='pois'?cfg.poiMs:R.server?cfg.serverHeaderMs:(i?Math.min(cfg.headerMs,24000):cfg.headerMs),layer==='pois'?5000000:layer==='geometry'?8000000:23000000));
+     const value=await slot(signal,()=>wire(R.server?`api/map?bbox=${encodeURIComponent(b.join(','))}&layer=${layer}&mode=${opts.mode||'poster'}`:endpoint,R.server?{}:{method:'POST',body:new URLSearchParams({data:layer==='pois'?poiQuery(b):osmQuery(b,layer)})},signal,e=>emit({phase,layer,attempt:i+1,attempts,...e}),layer==='pois'?cfg.poiMs:R.server?cfg.serverHeaderMs:(i?Math.min(cfg.headerMs,19000):cfg.headerMs),layer==='pois'?5000000:layer==='geometry'?8000000:23000000));
      if(!R.server)preferred=index;await cache.set(key,value);check(signal);return value;
-    }catch(e){check(signal);last=e;if(['RATE_LIMIT','QUERY_TIMEOUT','SIZE','INCOMPLETE','HTTP'].includes(e.code)||i+1===attempts)break;emit({phase,status:'retry',detail:e.message+' Ein begrenzter Wiederholungsversuch folgt.'});await pause(cfg.retryMs,signal);}
+    }catch(e){check(signal);last=e;failures.push({service,code:e.code||'UNKNOWN',status:e.status||null});
+     if(['RATE_LIMIT','QUERY_TIMEOUT','SIZE','INCOMPLETE','HTTP'].includes(e.code)||i+1===attempts)break;
+     emit({phase,status:'retry',detail:service+': '+e.message+' Weiterer Datendienst wird versucht.'});await pause(cfg.retryMs,signal);}
    }
-   throw last||Error('Kartendienst nicht verfügbar.');
+   if(last){last.diagnostics={...(last.diagnostics||{}),layer,bounds:b.slice(),attemptedProviders:failures};throw last;}
+   throw Error('Kartendienst nicht verfügbar.');
   });
  }
  // Split only incomplete compulsory geometry and relation tiles on recoverable
  // slow-service errors. Never rotate/split in response to HTTP 429.
  async function requiredTask(b,layer,signal,onProgress,ctx,depth=0){
   const planKey='plan:'+keyFor(b,layer);let plan=ctx.refresh?null:await cache.get(planKey);check(signal);
-  if(Array.isArray(plan)&&plan.length===2&&depth<3){
+  if(Array.isArray(plan)&&plan.length===2&&depth<5){
    ctx.total++;return mergeOSM(await Promise.all(plan.map(p=>requiredTask(p,layer,signal,onProgress,ctx,depth+1))));
   }
   try{
@@ -129,11 +136,13 @@ function createDataLoader(options={}){
    return raw;
   }catch(e){
    check(signal);const dims=R.boundsInfo(b);
-   if(['QUERY_TIMEOUT','SIZE','HEADER_TIMEOUT','IDLE','SERVER'].includes(e.code)&&depth<3&&Math.min(dims.w,dims.h)>300){
+   if(['QUERY_TIMEOUT','SIZE','HEADER_TIMEOUT','IDLE','SERVER'].includes(e.code)&&depth<5&&Math.min(dims.w,dims.h)>140){
     const children=splitBounds(b);await cache.set(planKey,children);check(signal);ctx.total++;
     send(onProgress,{phase:'base',status:'part',done:ctx.done,total:ctx.total,detail:'Datendienst zu langsam: Teilbereich wird verkleinert. Fertige Pakete bleiben erhalten.'});
     return mergeOSM(await Promise.all(children.map(p=>requiredTask(p,layer,signal,onProgress,ctx,depth+1))));
    }
+   e.diagnostics={...(e.diagnostics||{}),layer,bounds:b.slice(),completedPackages:ctx.done,totalPackages:ctx.total};
+   send(onProgress,{phase:'base',status:'error',layer,code:e.code||'UNKNOWN',detail:'Das fehlende Kartenpaket konnte nach mehreren Versuchen nicht vollständig geladen werden.'});
    throw e;
   }
  }

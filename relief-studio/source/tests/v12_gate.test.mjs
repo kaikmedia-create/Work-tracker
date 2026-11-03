@@ -2,7 +2,7 @@ import test from 'node:test';import assert from 'node:assert/strict';import {rea
 const root=dirname(dirname(fileURLToPath(import.meta.url)));const site=existsSync(join(root,'site'))?join(root,'site'):join(root,'..');
 const js=await readFile(join(site,'gate-v12.js'),'utf8');
 const entry=await readFile(join(site,'index.html'),'utf8');
-assert(entry.includes('gate-v15.js?v=15'), 'current entry is v15, historic v12 gate must remain readable');
+assert(entry.includes('gate-v16.js?v=16'), 'current entry is v15, historic v12 gate must remain readable');
 function instance(pin){let written='';const els=Object.fromEntries(['login','submit','status','pin'].map(id=>[id,{disabled:false,textContent:'',value:''}]));els.pin.value=pin;
  const document={getElementById:id=>els[id],open(){written='';},write(text){written+=text;},close(){}};
  const fetch=async path=>{const file=join(site,path.split('?')[0]);const data=await readFile(file);return new Response(data,{status:200});};

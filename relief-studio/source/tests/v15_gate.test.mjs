@@ -11,11 +11,16 @@ function instance(pin,corrupt=false){
  const globals={window:{},document,fetch,setTimeout:()=>0,URL:{createObjectURL:blob=>(downloaded=blob,'blob:test'),revokeObjectURL(){}},crypto:webcrypto,DecompressionStream,TextEncoder,Response,Blob,Uint8Array,atob,btoa,unescape,encodeURIComponent,console};
  vm.runInNewContext(code,globals);return {load:()=>els.login.onsubmit({preventDefault(){}}),files:()=>globals.window.RELIEF_SOURCE_FILES,html:()=>rendered,status:()=>els.status.textContent,diagnostic:()=>els['gate-diagnose'],downloaded:()=>downloaded};
 }
-test('v15 remains available while v15 is the published entry',async()=>assert((await readFile(join(site,'index.html'),'utf8')).includes('gate-v15.js?v=15')));
+test('v15 remains available while v15 is the published entry',async()=>assert((await readFile(join(site,'index.html'),'utf8')).includes('gate-v16.js?v=16')));
 test('v15 wrong PIN cannot expose the application',async()=>{const r=instance('0000');await r.load();assert.match(r.status(),/PIN falsch/);assert.equal(r.html(),'');});
 test('v15 decrypted app and worker match all tested browser source bytes',async()=>{
  const r=instance('2808');await r.load();assert(r.files(),r.status());
- for(const name of ['core.js','architecture.js','data.js','app.js','index.html','map.js','viewer.js','poster.js','worker.js','style.css','diagnostics.js'])assert.equal(r.files()['public/'+name],await readFile(join(root,'public',name),'utf8'),name);
+ const previous=JSON.parse(await readFile(join(site,'upgrade16.json'),'utf8')).changes;
+ for(const name of ['core.js','architecture.js','data.js','app.js','index.html','map.js','viewer.js','poster.js','worker.js','style.css','diagnostics.js']){
+  const key='public/'+name;
+  if(previous[key])assert.equal(createHash('sha256').update(r.files()[key]).digest('hex'),previous[key].base,'historical v15 '+name);
+  else assert.equal(r.files()[key],await readFile(join(root,'public',name),'utf8'),name);
+ }
  assert(r.html().includes('notice-diagnose'));assert(r.html().includes('function createDiagnostics'));
  assert(r.html().includes('retriangulateZeroArea'));assert(r.html().includes('geometryKernelVersion:15'));
  assert(r.html().includes('RELIEF STUDIO <b>15.0</b>'));assert(r.html().includes('window.RS_WORKER_SOURCE='));

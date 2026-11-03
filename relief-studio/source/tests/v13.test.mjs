@@ -35,7 +35,7 @@ test('v13 all services stalled cannot produce a false success',async()=>{
  await new Promise(r=>setTimeout(r,20));assert.equal(loader.diagnostics().active,0);
 });
 test('v13 uses current Overpass alternative after upstream HTTP 503',async()=>{
- const hosts=[],loader=make((u,o)=>{hosts.push(u);return u.includes('overpass.private.coffee')?new Response('busy',{status:503}):json({elements:[]});});
+ const hosts=[],loader=make((u,o)=>{hosts.push(u);return u.includes('ovp.dresel.systems')?new Response('busy',{status:503}):json({elements:[]});});
  await loader.getOSMLayer(bounds,undefined,'geometry');
- assert(hosts[0].includes('overpass.private.coffee')&&hosts[1].includes('maps.mail.ru'));
+ assert(hosts[0].includes('ovp.dresel.systems')&&hosts[1].includes('overpass.private.coffee'));
 });

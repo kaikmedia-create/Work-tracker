@@ -66,8 +66,8 @@ test('v11 respects HTTP 429 Retry-After and does not rotate to evade throttling'
  await assert.rejects(l.getOSMLayer(b,undefined,'geometry'),e=>e.code==='RATE_LIMIT');assert.equal(calls,1);assert(l.diagnostics().cooldownUntil>Date.now()+40000);
 });
 test('v13 overload tries a current fallback endpoint and remembers it',async()=>{
- const hosts=[];const l=make(async(u,o)=>{hosts.push(u);return u.includes('overpass.private.coffee')?new Response('busy',{status:503}):json(raw(classify(o)));});
- await l.getOSMLayer(b,undefined,'geometry');await l.getOSMLayer(b,undefined,'relations');assert.equal(hosts.length,3);assert(hosts[0].includes('overpass.private.coffee'));assert(hosts.slice(1).every(u=>u.includes('maps.mail.ru')));
+ const hosts=[];const l=make(async(u,o)=>{hosts.push(u);return u.includes('ovp.dresel.systems')?new Response('busy',{status:503}):json(raw(classify(o)));});
+ await l.getOSMLayer(b,undefined,'geometry');await l.getOSMLayer(b,undefined,'relations');assert.equal(hosts.length,3);assert(hosts[0].includes('ovp.dresel.systems'));assert(hosts.slice(1).every(u=>u.includes('overpass.private.coffee')));
 });
 test('v11 query runtime timeout splits geometry without accepting a partial remark',async()=>{
  let attempts=0;const store=cache();const l=make(async(u,o)=>{const kind=classify(o);if(kind==='geometry'&&++attempts===1)return json({elements:[building],remark:'runtime error: Query timed out'});return json(raw(kind));},{},store);

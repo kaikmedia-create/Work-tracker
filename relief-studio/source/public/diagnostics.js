@@ -1,7 +1,7 @@
 /* Local-only, bounded diagnostic export. Never reads cookies, PINs or storage. */
 (function(R){
 'use strict';
-function createDiagnostics({now=()=>Date.now(),release='15.0.0'}={}){
+function createDiagnostics({now=()=>Date.now(),release='16.0.0'}={}){
  const events=[],errors=[];let provider=()=>({}),latest=null,sequence=0;
  const redact=value=>String(value??'').replace(/https?:\/\/[^\s"'<>]+/g,url=>url.replace(/[?#].*$/,''))
   .replace(/(\b(?:password|passwd|pin|token|api[_-]?key|authorization|cookie|secret)\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,;&]+)/gi,'$1[entfernt]');
