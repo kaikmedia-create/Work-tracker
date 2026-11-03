@@ -1,0 +1,19 @@
+{
+  "scope": "Actual published release-14 geometry and loader; real Weinheim 4x4 km, no synthetic replacement data",
+  "testedCodeCommit": "be6e452fe9bae32f794fe0a55aca210ff04c98bf",
+  "release": 14,
+  "sizeKm": 4,
+  "bounds": [8.656308300207316,49.53103039037301,8.711691699792684,49.56696300195899],
+  "realData": true,
+  "status": "failed",
+  "startedAt": "2026-11-03T07:52:16.319Z",
+  "buildings": 9231,
+  "terrain": {"cols":161,"rows":161,"tileCount":12},
+  "osmTimestamp": "2026-11-03T07:51:14Z",
+  "loadStats": {"packages":3,"requests":3,"durationMs":91075,"resumeAttempts":0},
+  "error": "Die Gebäudekontakte benötigen eine genauere Prüfung. Das fehlerhafte Modell wurde nicht zum Export freigegeben.",
+  "elapsedMs": 179967,
+  "lastProgress": "9231 Gebäude und Gelände geladen. 3D-Berechnung läuft lokal.",
+  "modelAndExportsPassed": false,
+  "interpretation": "Network load completed, but the geometry kernel could not regularise all contacts within its bounded repair policy. Successful synthetic regression tests and deployment do not constitute successful real Weinheim acceptance. Do not report this run as passed."
+}
