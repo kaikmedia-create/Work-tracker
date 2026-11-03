@@ -1,28 +1,67 @@
 {
-  "version": "15.0.0",
+  "version": "17.0.0",
   "account": "kaikmedia-create",
   "repository": "kaikmedia-create/Work-tracker",
   "folder": "relief-studio",
   "target": "github-pages",
   "status": "requires-deployment-check",
-  "base_commit": "08d8b87ed7e2b2070763c2311033f6609260f701",
+  "base_commit": "9418bdeb4128ee1d6073cdf4f6e3b70eef57834f",
   "entry": "index.html",
-  "gate": "gate-v15.js",
+  "gate": "gate-v17.js",
   "base_package": "bundle10.json",
   "updates": [
     "upgrade11.json",
     "upgrade12.json",
     "upgrade13.json",
     "upgrade14.json",
-    "upgrade15.json"
+    "upgrade14-recovery.json",
+    "upgrade15.json",
+    "upgrade16.json",
+    "upgrade17.json"
   ],
-  "source_in_repository": "Hash-verified release deltas; npm prestart/pretest reconstruct runtime source and tests automatically via source/tools/prepare_release14.mjs.",
+  "source_in_repository": "SHA-256-verified release17 deltas over v16; npm prestart/pretest materialise exact tested source via source/tools/prepare_release17.mjs.",
   "checks": {
-    "node_passed": 133,
-    "browser_worker_export_passed": 12,
-    "real_weinheim": "separate-live-test-required"
+    "release": "17.0.0",
+    "date": "2026-11-03",
+    "baseline": "9418bdeb4128ee1d6073cdf4f6e3b70eef57834f",
+    "node": {
+      "passed": 182,
+      "failed": 0,
+      "freshCheckoutPassed": 182
+    },
+    "browser": {
+      "rounds": 2,
+      "passedPerRound": 29,
+      "failed": 0,
+      "realUserProjectObjects": 3294,
+      "networkFaults": "controlled mock Fetch; real loader, cache, queue, reader, worker and export UI"
+    },
+    "weinheim": {
+      "extentKm": [
+        2.027,
+        1.901
+      ],
+      "widthsMm": [
+        100,
+        200,
+        300
+      ],
+      "passed": 3,
+      "omitted": 0,
+      "trianglesAt200Mm": 612546
+    },
+    "independentExports": {
+      "files": 4,
+      "watertight": 4,
+      "consistentWinding": 4,
+      "singleComponent": 4,
+      "zeroAreaTriangles": 0
+    },
+    "freshPublicDataDownloadTested": false,
+    "physicalPrintTested": false,
+    "privateInputIncluded": false
   },
   "gating": "static preview PIN; not server-side access control",
   "code_commit": null,
-  "note": "Release 15 source package tested locally. No push or live-deployment confirmation in this session. No complete private user diagnostic included."
+  "note": "Two complete local browser scenario runs and user-supplied Weinheim export acceptance passed. Fresh external Overpass download not verified. No private diagnostic or project data committed."
 }
