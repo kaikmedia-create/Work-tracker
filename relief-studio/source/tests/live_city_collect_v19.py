@@ -1,5 +1,5 @@
 """Opt-in public OSM/DEM fixtures. No private diagnostics, credentials or production writes."""
-import json,math,time,pathlib,subprocess,urllib.request,urllib.parse,urllib.error,io,traceback
+import json,math,time,pathlib,subprocess,urllib.request,urllib.parse,urllib.error,io,traceback,sys
 from PIL import Image
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 OUT=ROOT/'reports/city-qa';OUT.mkdir(parents=True,exist_ok=True)
@@ -37,7 +37,7 @@ for name,lon,lat,w,h in cases:
  start=time.monotonic();record={'case':name,'status':'started','attempts':[],'network':'live HTTPS','startedAt':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime())};records.append(record)
  try:
   if rate_limited:raise RuntimeError('Not executed: prior provider HTTP 429; no rate-limit bypass')
-  spec=json.loads(subprocess.check_output(['node','--input-type=module','-e',node,str(lon),str(lat),str(w),str(h)],cwd=ROOT));record['bounds']=spec['bounds']
+  spec=json.loads(subprocess.check_output(['node','--input-type=module','-e',node,'--',str(lon),str(lat),str(w),str(h)],cwd=ROOT));record['bounds']=spec['bounds']
   hosts=(['https://ovp.dresel.systems/api/interpreter'] if spec['europe'] else [])+['https://overpass-api.de/api/interpreter','https://overpass.private.coffee/api/interpreter'];raw=None
   for host in hosts[:2]:
    t=time.monotonic()
@@ -54,7 +54,8 @@ for name,lon,lat,w,h in cases:
   config={'version':3,'settings':{'title':name,'lon':lon,'lat':lat,'widthKm':w,'heightKm':h,'modelWidth':200,'mode':'model','resolution':161},'bounds':spec['bounds'],'terrain':dem,'raw':raw}
   input_path=OUT/(name+'-input.json');input_path.write_text(json.dumps(config))
   convert="import fs from 'node:fs';import './public/core.js';const p=JSON.parse(fs.readFileSync(process.argv[1]));const f=RS.parseOSM(p.raw,p.bounds);const data={version:2,coastlineVersion:8,...f,bounds:p.bounds,terrain:p.terrain,realData:true,source:'OpenStreetMap contributors / ODbL 1.0',osmTimestamp:p.raw.osm3s?.timestamp_osm_base,capturedAt:new Date().toISOString()};fs.writeFileSync(process.argv[2],JSON.stringify({version:3,settings:RS.cleanSettings(p.settings),data}));console.log(data.buildings.length);"
-  count=int(subprocess.check_output(['node','--input-type=module','-e',convert,str(input_path),str(OUT/(name+'.json'))],cwd=ROOT));record.update(status='downloaded',buildings=count,terrainTiles=dem['tileCount']);input_path.unlink()
+  count=int(subprocess.check_output(['node','--input-type=module','-e',convert,'--',str(input_path),str(OUT/(name+'.json'))],cwd=ROOT));record.update(status='downloaded',buildings=count,terrainTiles=dem['tileCount']);input_path.unlink()
  except Exception as e:record.update(status='failed',error=str(e),traceback=traceback.format_exc())
  record['seconds']=round(time.monotonic()-start,2);(OUT/'live-results.json').write_text(json.dumps(records,indent=2));print(json.dumps(record),flush=True)
  time.sleep(1)
+if any(r['status']!='downloaded' for r in records):sys.exit(1)
