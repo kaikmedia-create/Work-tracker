@@ -1,0 +1,45 @@
+name: Verify conforming vertical wall seams
+on:
+  push:
+    branches: [qa/vertical-wall-seams-25]
+permissions:
+  contents: write
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with: {path: review, persist-credentials: false}
+      - uses: actions/checkout@v4
+        with: {path: candidate, ref: eea4cb1c631e0fee0f727187890df833c9dad4d9, persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Reproduce tested geometry fix and verify complete release digest
+        working-directory: candidate
+        run: |
+          node relief-studio/source/tools/prepare_release24.mjs
+          python3 ../review/.seams25/release.py relief-studio
+          git add -- relief-studio
+          python3 - <<'PY'
+          import subprocess as s,hashlib as h,pathlib
+          p=s.check_output(['git','diff','--cached','--name-only']).decode().splitlines();assert len(p)==26 and all(x.startswith('relief-studio/') for x in p),p
+          text=''.join(x.removeprefix('relief-studio/')+':'+h.sha256(pathlib.Path(x).read_bytes()).hexdigest()+'\n' for x in sorted(p));digest=h.sha256(text.encode()).hexdigest();print(digest);assert digest=='904ede95130f8ee36993a592206ed552590ad9bf612a72e6e16401855c3c4662'
+          PY
+      - name: Run complete regression suite including positive and negative seam cases and gate integrity
+        working-directory: candidate/relief-studio/source
+        run: npm test
+      - name: Publish only preverified bytes to a dedicated candidate branch
+        working-directory: candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import os,json,subprocess as s,urllib.request as u
+          api='https://api.github.com/repos/'+os.environ['GITHUB_REPOSITORY']+'/git/'
+          def post(path,payload):
+           req=u.Request(api+path,data=json.dumps(payload).encode(),headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json'});return json.load(u.urlopen(req,timeout=45))
+          paths=s.check_output(['git','diff','--cached','--name-only']).decode().splitlines();assert len(paths)==26 and all(x.startswith('relief-studio/') for x in paths)
+          tree=post('trees',{'base_tree':s.check_output(['git','rev-parse','HEAD^{tree}']).decode().strip(),'tree':[{'path':x,'mode':'100644','type':'blob','content':s.check_output(['git','show',':'+x]).decode()} for x in paths]})['sha'];parent=s.check_output(['git','rev-parse','HEAD']).decode().strip();assert parent=='eea4cb1c631e0fee0f727187890df833c9dad4d9'
+          c=post('commits',{'tree':tree,'parents':[parent],'message':'Relief Studio 25: conform verified vertical wall joints without altering the geometry'});post('refs',{'ref':'refs/heads/feature/verified-wall-seams-25','sha':c['sha']});print(c['sha'])
+          PY
