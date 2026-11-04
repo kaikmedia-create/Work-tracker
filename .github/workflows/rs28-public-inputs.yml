@@ -1,0 +1,35 @@
+name: Public international building samples
+on:
+  push:
+    branches: [qa/world-building-details-28]
+    paths: ['.github/workflows/rs28-public-inputs.yml']
+permissions: {contents: read}
+jobs:
+  samples:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Bundle an optional read-only PMTiles decoder (no third-party script at runtime)
+        run: |
+          mkdir -p deps out; cd deps
+          npm install --ignore-scripts --no-audit --no-fund pmtiles@4.3.0 @mapbox/vector-tile@2.0.4 pbf@4.0.1 esbuild@0.25.5
+          echo "export {PMTiles} from 'pmtiles'; export {VectorTile} from '@mapbox/vector-tile'; export {default as Pbf} from 'pbf';" > entry.mjs
+          ./node_modules/.bin/esbuild entry.mjs --bundle --format=esm --minify --legal-comments=inline --outfile=../out/world-tiles.mjs
+          cp package-lock.json ../out/decoder-lock.json
+          for pkg in pmtiles @mapbox/vector-tile pbf fflate ieee754; do if [ -d node_modules/$pkg ]; then echo "--- $pkg ---"; find node_modules/$pkg -maxdepth 1 -iname 'license*' -exec cat {} \;; fi; done > ../out/decoder-LICENSE.txt
+      - name: Obtain small map samples and inspect Overture tile fields
+        run: |
+          cat > deps/probe.mjs <<'JS'
+          import {PMTiles,VectorTile,Pbf} from '../out/world-tiles.mjs';import fs from 'node:fs/promises';
+          const url='https://overturemaps-extras-us-west-2.s3.us-west-2.amazonaws.com/tiles/2026-10-21.0/buildings.pmtiles',arc=new PMTiles(url);
+          const cities={istanbul:[28.9801,41.0086],moscow:[37.6227,55.7525],mumbai:[72.8347,18.922],sydney:[151.2153,-33.8572],nyc:[-73.98565,40.74845],amsterdam:[4.8908,52.3731],tokyo:[139.7967,35.7148]};
+          for(const [city,[lon,lat]] of Object.entries(cities)){
+           const d=.00095,bb=[lon-d,lat-d,lon+d,lat+d];try{const r=await fetch('https://api.openstreetmap.org/api/0.6/map.json?bbox='+bb.join(','),{headers:{'User-Agent':'ReliefStudio QA small public sample'},signal:AbortSignal.timeout(18000)});if(r.ok){const j=await r.json();for(const e of j.elements)for(const n of ['user','uid','changeset'])delete e[n];await fs.writeFile('out/osm-'+city+'.json',JSON.stringify(j));}else console.log(city,'osm',r.status);}catch(e){console.log(city,String(e));}
+           try{const n=2**14,x=Math.floor((lon+180)/360*n),y=Math.floor((1-Math.asinh(Math.tan(lat*Math.PI/180))/Math.PI)/2*n);const t=await arc.getZxy(14,x,y);if(t){const tile=new VectorTile(new Pbf(new Uint8Array(t.data)));console.log(city,Object.keys(tile.layers),Object.entries(tile.layers).map(([k,l])=>[k,l.length,l.feature(0).properties]).map(x=>JSON.stringify(x).slice(0,1300)));await fs.writeFile(`out/tile-${city}-14-${x}-${y}.pbf`,new Uint8Array(t.data));}}catch(e){console.log(city,'overture',String(e));}
+          }
+          JS
+          node deps/probe.mjs
+      - uses: actions/upload-artifact@v4
+        with: {name: public-world-inputs, path: out, retention-days: 1}
