@@ -1,0 +1,49 @@
+name: Verify printable international buildings
+on:
+  push:
+    branches: [qa/world-building-details-28]
+    paths: ['qa28/**','.github/workflows/rs28-verify.yml']
+permissions: {actions: read, contents: write}
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with: {path: qa}
+      - uses: actions/checkout@v4
+        with: {path: repo, ref: 296fc05a00d1d792646d8dbc0cbc29b03d7c7499}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - uses: actions/download-artifact@v4
+        with: {name: public-world-inputs, path: inputs, run-id: 41852419235, github-token: '${{ github.token }}'}
+      - uses: actions/upload-artifact@v4
+        with: {name: qa-recipes, path: qa/qa28, retention-days: 1}
+      - name: Preserve dependencies and license notices
+        run: |
+          curl -fsSL --retry 2 https://raw.githubusercontent.com/protomaps/PMTiles/main/LICENSE >> inputs/decoder-LICENSE.txt
+          (curl -fsSL --retry 1 https://raw.githubusercontent.com/mapbox/point-geometry/main/LICENSE || curl -fsSL https://raw.githubusercontent.com/mapbox/point-geometry/master/LICENSE) >> inputs/decoder-LICENSE.txt
+          cp inputs/decoder-lock.json repo/relief-studio/source/tools/world-decoder-lock.json
+      - name: Build integrated release from immutable main baseline
+        run: |
+          python qa/qa28/build.py repo/relief-studio/source inputs
+          tar czf candidate.tgz -C repo relief-studio
+      - uses: actions/upload-artifact@v4
+        with: {name: candidate, path: candidate.tgz, retention-days: 1}
+      - name: Full regression suite including gate and printing
+        working-directory: repo/relief-studio/source
+        run: |
+          set -o pipefail
+          npm test > /tmp/tests.log 2>&1 || { grep -A45 -E '^not ok|Error:' /tmp/tests.log | head -200; tail -25 /tmp/tests.log; exit 1; }
+          tail -12 /tmp/tests.log
+      - name: Verify seven public landmark samples
+        run: |
+          node --max-old-space-size=5200 repo/relief-studio/source/tests/world28-cities.mjs inputs results
+          mkdir -p repo/relief-studio/reports/v28; cp results/international.json repo/relief-studio/reports/v28/
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: city-results, path: results, retention-days: 1, if-no-files-found: ignore}
+      - name: Stage tested files only, never push directly to main
+        working-directory: repo
+        run: |
+          git config user.name 'Relief Studio QA'; git config user.email 'github-actions[bot]@users.noreply.github.com'; git add -u relief-studio; cd relief-studio; git add gate-v28.js upgrade28.json RELEASE-NOTES-28.md source/public/world28.js source/public/world-tiles.js source/public/world-decoder-LICENSE.txt source/tools/world-decoder-lock.json source/tests/world28.test.mjs source/tests/world28-cities.mjs source/tests/v28_gate.test.mjs source/tools/prepare_release28.mjs reports/v28/international.json; git diff --cached --stat; git commit -m 'Render source-backed international landmarks and enrich missing building details worldwide'; git push origin HEAD:refs/heads/feature/international-buildings-28-${GITHUB_RUN_ID}
