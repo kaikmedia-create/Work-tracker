@@ -1,13 +1,13 @@
 {
-  "version": "24.0.0",
+  "version": "25.0.0",
   "account": "kaikmedia-create",
   "repository": "kaikmedia-create/Work-tracker",
   "folder": "relief-studio",
   "target": "github-pages",
   "status": "requires-deployment-check",
-  "base_commit": "a7143e692b99d85073c824a2ecdf053f62217fec",
+  "base_commit": "eea4cb1c631e0fee0f727187890df833c9dad4d9",
   "entry": "index.html",
-  "gate": "gate-v24.js",
+  "gate": "gate-v25.js",
   "base_package": "bundle10.json",
   "updates": [
     "upgrade11.json",
@@ -24,12 +24,13 @@
     "upgrade21.json",
     "upgrade22.json",
     "upgrade23.json",
-    "upgrade24.json"
+    "upgrade24.json",
+    "upgrade25.json"
   ],
-  "source_in_repository": "DEM smoothing, cursor-anchored 3D navigation and primary STL export.",
+  "source_in_repository": "Conforming exact vertical wall subdivisions; no adjustment of the input geometry.",
   "checks": {
     "runner": "npm test",
-    "feature": "tests/navigation-terrain24.test.mjs"
+    "feature": "tests/vertical-seam25.test.mjs"
   },
   "gating": "static preview PIN; not server-side access control",
   "code_commit": null,

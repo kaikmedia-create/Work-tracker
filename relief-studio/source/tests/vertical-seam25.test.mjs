@@ -1,0 +1,7 @@
+import test from 'node:test';import assert from 'node:assert/strict';import '../public/core.js';import '../public/architecture.js';import {verifySolid} from './geometry_v14_verify.mjs';
+// Tetrahedron with one vertical wall edge tessellated on only one side.
+function fixture(n=2){const p=[0,0,0,0,0,2,2,0,0,0,2,0],ids=[0],t=[0,1,3,0,3,2,1,2,3];for(let i=1;i<n;i++){ids.push(p.length/3);p.push(0,0,2*i/n);}ids.push(1);for(let i=1;i<ids.length;i++)t.push(ids[i],ids[i-1],2);return {vertices:Float32Array.from(p),indices:Uint32Array.from(t),landFaces:new Uint32Array(0)};}
+function repair(m){const map=new Map(),n=m.vertices.length/3,t=m.indices;for(let i=0;i<t.length;i+=3)for(let j=0;j<3;j++){const a=t[i+j],b=t[i+(j+1)%3],k=Math.min(a,b)*n+Math.max(a,b);map.set(k,(map.get(k)||0)+(a<b?1:65536));}return RS.architecture.conformVerticalChains(m,[...map].filter(([,c])=>c!==65537),map);}
+for(const n of [2,4])test('a full opposite vertical chain is sewn without moving the model: '+n,()=>{const m=fixture(n),v=m.vertices.slice();assert.equal(repair(m),n-1);assert.deepEqual(m.vertices,v);const r=verifySolid(m);assert(Math.abs(r.volume-4/3)<1e-6);assert.equal(repair(m),0);});
+test('missing segment is not capped',()=>{const m=fixture();m.indices=m.indices.slice(0,-3);assert.equal(repair(m),0);});
+test('horizontal offset or inconsistent winding must not be treated as a conforming edge',()=>{const m=fixture();m.vertices[12]=0.0001;assert.equal(repair(m),0);m.vertices[12]=0;m.indices.set([0,4,2],9);assert.equal(repair(m),0);});
