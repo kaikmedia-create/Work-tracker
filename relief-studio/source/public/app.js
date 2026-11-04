@@ -466,3 +466,19 @@ if(!globalThis.RELIEF_STATIC_PREVIEW&&location.protocol!=='file:')fetch('api/sta
 // Diagnostics are local only. The interface exposes no credentials or remote administration.
 Object.defineProperty(globalThis,'ReliefStudio',{value:{get settings(){return {...settings};},get data(){return data;},get mesh(){return mesh;},get building(){return building;},view,exportPoster:()=>R.exportPoster(data,settings),get mode(){return settings.mode;},get started(){return started;},get panel(){return currentPanel;},version:'28.0.0'}});
 })(globalThis.RS);
+
+// Optional phone layout. Inactive on desktops, including narrow mouse windows.
+;(() => {
+ if (typeof matchMedia !== 'function') return;
+ const media = matchMedia("(hover: none) and (pointer: coarse) and (max-width: 700px), (hover: none) and (pointer: coarse) and (orientation: landscape) and (max-width: 1000px) and (max-height: 550px)"); let loading = false;
+ function activate() {
+  if (!media.matches || loading) return;
+  loading = true;
+  const base = new URL(window.RELIEF_STATIC_PREVIEW ? './source/public/' : './', document.baseURI);
+  import(new URL('phone-workspace.js?v=4b41c8bfea1b',base).href).then(module => {
+   module.attachPhoneWorkspace(media,new URL('phone-workspace.css?v=4b41c8bfea1b',base).href);
+   media.removeEventListener('change',activate);
+  }).catch(() => { loading = false; }); // the existing responsive UI remains usable
+ }
+ media.addEventListener('change',activate); activate();
+})();

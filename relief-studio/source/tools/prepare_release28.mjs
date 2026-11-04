@@ -7,6 +7,9 @@ for(const version of [17,18,19,20,21,22,23,24,25,26,27,28]){
  if(p.version!==version||Object.keys(p.changes||{}).length!==(version>=27?5:version===26?6:version===25?4:version===24?6:version===23?5:version===22?4:version===21?7:version===20?5:version===19?7:4))throw Error('Invalid release '+version);
  for(const [name,c] of Object.entries({...p.changes,...p.sourceChanges})){if(!chains.has(name))chains.set(name,[]);chains.get(name).push(c);}
 }
+const phone=JSON.parse(await readFile(resolve(site,'upgrade28-phone.json'),'utf8'));
+if(phone.version!=='28-phone.1'||Object.keys(phone.changes).join(',')!=='public/app.js')throw Error('Invalid phone patch');
+chains.get('public/app.js').push(phone.changes['public/app.js']);
 for(const [name,chain] of chains){
  if(!/^(?:public\/(?:data|app|diagnostics|architecture|core|worker|viewer)\.js|public\/index\.html|server\.mjs|tests\/v(?:12|13|14|15|16|17|18|19|20|21|22|23|24|25|26|27)_gate\.test\.mjs)$/.test(name))throw Error('Unsafe release path: '+name);
  const path=resolve(root,name);if(!path.startsWith(root+sep))throw Error('Unsafe target.');
