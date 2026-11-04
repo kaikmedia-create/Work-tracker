@@ -1,0 +1,17 @@
+name: Inspect official Weinheim CityGML
+on:
+  push:
+    branches: [qa/landmarks26]
+    paths: ['.github/workflows/rs26-inspect-lod2.yml']
+permissions: {}
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Retrieve one publicly licensed LGL BW 2 km tile
+        run: |
+          curl --fail --location --max-time 90 --retry 1 -o tile.zip 'https://opengeodata.lgl-bw.de/data/lod2/LoD2_32_475_5488_2_bw.zip'
+          unzip -l tile.zip | head -30
+      - uses: actions/upload-artifact@v4
+        with: {name: public-lgl-tile, path: tile.zip, retention-days: 1}
