@@ -1,0 +1,11 @@
+{
+  "release": "21.0.0",
+  "sourceCommit": "cdcb45968c5346502ca110f033082829b2969636",
+  "ciRun": 41827320505,
+  "testsPassed": 242,
+  "testsFailed": 0,
+  "method": "One run per release, same previously saved Weinheim project (3.2 x 3.0 km, 200 mm), headless Chromium, 1240 x 820, Canvas2D fallback. Fifteen consecutive pointer moves scheduled with requestAnimationFrame. This tests the display interaction rather than raw GPU FPS. No network data download; not tested on the user's device.",
+  "v20": {"importToReadySeconds":78.43,"triangles":2234520,"medianFrameMs":8087.2,"frameMs":[7250,8197.8,7938.5,7357.9,7579.4,8511.6,8842.2,7406.9,7351.3,8101.9,8087.2,7090.3,8394.6,9791.5,8202.3]},
+  "v21": {"importToReadySeconds":47.35,"triangles":1714546,"medianFrameMs":16.2,"frameMs":[12.7,20,15.4,12.9,14.4,15.7,16.2,16.6,17,18,16.2,14.7,17.6,15.4,17.2],"mappedWaterLines":41,"mappedWaterAreas":11,"mappedGreenAreas":46},
+  "validation": {"reportedJsErrors":0,"exportedViaBrowserButtons":["STL","3MF"],"identicalTriangleCoordinates":true,"connectedComponents":1,"invalidEdges":0,"zeroAreaTriangles":0,"physicalPrint":false}
+}
