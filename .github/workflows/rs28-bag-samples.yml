@@ -1,0 +1,16 @@
+name: Fetch reproducible national roof evidence
+on:
+  push:
+    branches: [qa/world-building-details-28]
+    paths: ['.github/workflows/rs28-bag-samples.yml']
+permissions: {contents: read}
+jobs:
+  sample:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - run: |
+          mkdir -p samples; for n in 0363100012167578 0363100012165429 0363100012169079 0363100012175580 0363100012167963 0363100012176225 0363100012167964 0363100012176224; do curl -L --max-time 10 --retry 1 --silent --fail https://api.3dbag.nl/collections/pand/items/NL.IMBAG.Pand.$n -o samples/$n.json || true; done
+          test -s samples/0363100012167578.json
+      - uses: actions/upload-artifact@v4
+        with: {name: bag-inputs, path: samples, retention-days: 1}
