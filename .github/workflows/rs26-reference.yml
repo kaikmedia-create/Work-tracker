@@ -1,0 +1,20 @@
+name: Inspect public LoD2 reference for landmark geometry
+on:
+  push:
+    branches: [qa/landmark-surfaces-26]
+    paths: [.github/workflows/rs26-reference.yml]
+permissions: {contents: read}
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: Download public LGL tile for reference validation
+        run: |
+          curl --fail --location --retry 1 --max-time 70 -o LoD2_32_475_5488_2_bw.zip https://opengeodata.lgl-bw.de/data/lod2/LoD2_32_475_5488_2_bw.zip
+          unzip -tq LoD2_32_475_5488_2_bw.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lgl-reference
+          path: LoD2_32_475_5488_2_bw.zip
+          retention-days: 1
