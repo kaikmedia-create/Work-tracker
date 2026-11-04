@@ -11,7 +11,7 @@
 <body data-mode="choose">
 <header class="topbar">
 <a aria-label="Relief Studio Startseite" class="brand" href="#" id="home"><img alt="" height="36" src="favicon.svg" width="36"/><span>Relief<span class="brand-light">Studio</span><small>RELIEF MAP ATELIER</small></span></a>
-<div class="project-state"><span class="dot"></span><span id="project-state">Neues Projekt</span><span class="version">19</span></div>
+<div class="project-state"><span class="dot"></span><span id="project-state">Neues Projekt</span><span class="version">20</span></div>
 <nav aria-label="Projektaktionen" class="header-actions"><button class="ghost" hidden="" id="switch-mode">Modus wechseln</button><button class="ghost" id="new-project">＋ Neu</button><button class="ghost" id="open-project">Öffnen</button><button class="ghost" disabled="" hidden="" id="save-project">Speichern</button><button class="primary" hidden="" id="export-top">Exportieren <span>↗</span></button></nav>
 </header>
 <div class="access-note" hidden="" id="access-note"></div>
@@ -49,6 +49,9 @@
 <p class="hint">Die Höhe folgt dem geografischen Seitenverhältnis. Rahmen kommt außen hinzu.</p>
 <div class="callout"><strong>Gebäudedetails automatisch</strong><p>Exakte Grundrisse, einzelne Gebäudeteile, Innenhöfe und erfasste Dachformen. Türme werden nicht mehr in das Geländeraster gedrückt. Fehlende Höhen oder Dachmaße bleiben als Schätzung gekennzeichnet.</p></div>
 <div class="field-grid"><label>Rahmenbreite<span class="unit-input"><input data-setting="frame" id="frame-width" min="0" max="15" step="0.5" type="number"/><em>mm</em></span></label></div>
+<div class="section-title"><h3>Straßen und Wege</h3><span class="badge">STL + 3MF</span></div>
+<label for="road-mode">Straßenprofil<select id="road-mode" data-setting="roadMode"><option value="raised">Erhaben</option><option value="engraved">Eingraviert</option><option value="off">Aus</option></select></label>
+<div class="control"><label for="road-relief">Profilhöhe / -tiefe <output data-output="roadRelief"></output></label><input id="road-relief" data-setting="roadRelief" type="range" min="0" max="1" step="0.05"/><small>Modellmaß in mm. Hauptstraßen sind breiter und höher als Nebenstraßen und Fußwege. Bei Gravur bezeichnet der Wert die Tiefe. Ändern erfordert keinen neuen Kartenabruf.</small></div>
 <details id="model-advanced"><summary>Gelände anpassen (optional)</summary>
 <div class="control"><label for="terrain-factor">Geländeüberhöhung <output data-output="terrainFactor"></output></label><input data-setting="terrainFactor" id="terrain-factor" min="0" max="8" step="0.1" type="range"/><small>100 % ist maßstäblich. Die Gebäude behalten ihre eigenen, maßstäblichen Höhen.</small></div></details>
 <div class="section-title"><h3>Vorhandene Wahrzeichen</h3><span class="badge">QUELLDATEN</span></div>
@@ -65,7 +68,6 @@
 <div class="control"><label for="secondary">Verbindungsstraßen <output data-output="secondary">1,3 ×</output></label><input data-setting="secondary" id="secondary" max="4" min="0" step="0.1" type="range"/></div>
 <div class="control"><label for="local">Nebenstraßen <output data-output="local">0,7 ×</output></label><input data-setting="local" id="local" max="3" min="0" step="0.05" type="range"/></div>
 <div class="control"><label for="paths">Wege &amp; Pfade <output data-output="paths">0,32 ×</output></label><input data-setting="paths" id="paths" max="2" min="0" step="0.05" type="range"/></div>
-<div class="control" data-mode-only="model"><label for="road-relief">Straßen im 3D-Druck erheben <output data-output="roadRelief">0 mm</output></label><input data-setting="roadRelief" id="road-relief" max="1" min="0" step="0.05" type="range"/><small>Rasterabhängig; filigrane Wege können im Modell verschwinden.</small></div>
 <div data-mode-only="poster"><div class="section-title"><h3>Posterebenen</h3></div>
 <label class="check"><input data-setting="showBuildings" type="checkbox"/> Gebäudegrundrisse</label><label class="check"><input data-setting="contours" type="checkbox"/> Höhenlinien (echtes Gelände)</label><label class="check"><input data-setting="hillshade" type="checkbox"/> Dezente Höhenfärbung</label><label class="check"><input data-setting="showLabels" type="checkbox"/> Namen der Wahrzeichen</label>
 <p class="hint">Höhenlinien und Höhenfärbung benötigen zusätzliche Geländedaten. Fehlen sie, zeigt der Editor, wie du sie nachlädst.</p>
@@ -149,7 +151,7 @@
 </div>
 <div class="stage-bottom"><div class="stat"><span id="metric-a-label">AUSSCHNITT</span><strong id="metric-a">3,20 × 3,00 km</strong></div><div class="stat"><span id="metric-b-label">MODELLGRÖẞE INKL. RAHMEN</span><strong id="metric-b">208 × 196 mm</strong></div><div class="stat"><span id="metric-c-label">DATENSTATUS</span><strong id="metric-c">Noch nicht geladen</strong></div><button class="quality-button" id="quality-toggle">Datenqualität <span>↗</span></button></div>
 <div class="quality-panel" hidden="" id="quality-panel"><h3>Was im Modell steckt.</h3><div id="quality-content"><p>Die Datenqualität wird nach dem Laden angezeigt.</p></div></div>
-<footer class="main-footer"><span>RELIEF STUDIO <b>19.0</b></span><span>Echte Geografie. Bewusste Gestaltung.</span><button class="text-button" id="help">Hilfe &amp; Quellen</button></footer>
+<footer class="main-footer"><span>RELIEF STUDIO <b>20.0</b></span><span>Echte Geografie. Bewusste Gestaltung.</span><button class="text-button" id="help">Hilfe &amp; Quellen</button></footer>
 </main>
 </div>
 <div aria-live="polite" class="toast" hidden="" id="toast" role="status"></div>

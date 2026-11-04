@@ -27,7 +27,7 @@ async function body(req){const chunks=[];let n=0;for await(const c of req){n+=c.
 function cookie(value,maxAge){return `relief_session=${value}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAge}${HTTPS?'; Secure':''}`;}
 async function remote(url,options={},limit=25000000){
  const controller=new AbortController(),header=setTimeout(()=>controller.abort(),30000);
- let response;try{response=await fetch(url,{...options,signal:controller.signal,headers:{'User-Agent':'ReliefStudio/16.0 (+https://github.com/kaikmedia-create/Work-tracker)',...(options.headers||{})}});}catch(e){throw controller.signal.aborted?Error('Overpass hat 30 Sekunden lang keine Antwort geliefert.'):e;}finally{clearTimeout(header);}
+ let response;try{response=await fetch(url,{...options,signal:controller.signal,headers:{'User-Agent':'ReliefStudio/17.0 (+https://github.com/kaikmedia-create/Work-tracker)',...(options.headers||{})}});}catch(e){throw controller.signal.aborted?Error('Overpass hat 30 Sekunden lang keine Antwort geliefert.'):e;}finally{clearTimeout(header);}
  if(!response.ok)throw Error('Datendienst HTTP '+response.status);
  const chunks=[];let n=0,start=Date.now();
  const reader=response.body?.getReader();if(!reader){const v=Buffer.from(await response.arrayBuffer());if(v.length>limit)throw Error('Ausschnitt zu groß für den Datendienst.');return v;}
@@ -78,7 +78,7 @@ const server=http.createServer(async(req,res)=>{
   const layer=url.searchParams.get('layer')||'base';if(!['base','geometry','relations','pois'].includes(layer)){send(res,400,JSON.stringify({error:'Unbekannte Kartenebene.'}),'application/json');return;}
   try{
    const payload=await cached('map:v16:'+layer+':'+b.join(','),async()=>{
-    const europe=b[0]>=-25&&b[2]<=45&&b[1]>=34&&b[3]<=72;
+    const europe=R.europeBounds(b);
     const hosts=europe?['https://ovp.dresel.systems/api/interpreter','https://overpass.private.coffee/api/interpreter','https://maps.mail.ru/osm/tools/overpass/api/interpreter','https://overpass-api.de/api/interpreter']:['https://overpass.private.coffee/api/interpreter','https://maps.mail.ru/osm/tools/overpass/api/interpreter','https://overpass-api.de/api/interpreter'];
     let last;for(const host of hosts){
      try{

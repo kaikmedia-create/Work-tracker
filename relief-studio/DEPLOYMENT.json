@@ -1,5 +1,5 @@
 {
-  "version": "19.0.0",
+  "version": "20.0.0",
   "account": "kaikmedia-create",
   "repository": "kaikmedia-create/Work-tracker",
   "folder": "relief-studio",
@@ -7,7 +7,7 @@
   "status": "requires-deployment-check",
   "base_commit": "6b69f8b58dceeb510f10a9935aeab5c2216b5402",
   "entry": "index.html",
-  "gate": "gate-v19.js",
+  "gate": "gate-v20.js",
   "base_package": "bundle10.json",
   "updates": [
     "upgrade11.json",
@@ -19,15 +19,15 @@
     "upgrade16.json",
     "upgrade17.json",
     "upgrade18.json",
-    "upgrade19.json"
+    "upgrade19.json",
+    "upgrade20.json"
   ],
-  "source_in_repository": "Runtime, source delta and prepare_release19.mjs; public source verified against the released gate.",
+  "source_in_repository": "Print-scale relief of surface streets and paths; SHA-256 checked release 20 sources.",
   "checks": {
-    "release": "19.0.0",
-    "runner": "npm test; diagnostic19_ui.py; cities19_live.py",
-    "liveDataProbeRun": 41795513922
+    "runner": "npm test",
+    "feature": "tests/streets20.test.mjs"
   },
   "gating": "static preview PIN; not server-side access control",
   "code_commit": null,
-  "note": "Exact supplied 3.2 x 3 km Weinheim model and earlier smaller fixture passed. Both browser exports independently validated. Fresh external download and physical print not tested. No private map data committed."
+  "note": "Printable raised, engraved and disabled road modes; no extra network request."
 }
