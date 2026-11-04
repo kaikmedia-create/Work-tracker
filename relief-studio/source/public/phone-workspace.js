@@ -1,3 +1,4 @@
+import {cropTools} from './phone-crop.js?v=2';
 // Phone-only presentation layer. Never clone project controls, canvases or meshes.
 export function attachPhoneWorkspace(media, cssURL) {
   const $ = s => document.querySelector(s);
@@ -50,7 +51,8 @@ export function attachPhoneWorkspace(media, cssURL) {
     state.observe(body,{attributes:true,attributeFilter:['data-mode']});state.observe(load,{attributes:true,attributeFilter:['hidden']});state.observe(notice,{attributes:true,attributeFilter:['class','hidden']});
     // #fit-area normally runs before the hidden map has a size. Run it once after layout instead.
     $('#fit-area').addEventListener('click',()=>setPane('preview'),{capture:true,signal:controller.signal});
-    return ()=>{state.disconnect();controller.abort();cancelAnimationFrame(frame);setMenu(false);delete body.dataset.phone;delete body.dataset.phonePane;
+    const undoCrop=cropTools({$,body,dock,editor,preview,setPane,signal:controller.signal});
+    return ()=>{undoCrop();state.disconnect();controller.abort();cancelAnimationFrame(frame);setMenu(false);delete body.dataset.phone;delete body.dataset.phonePane;
       dock.remove();menu.remove();if(previousNavId)actions.id=previousNavId;else actions.removeAttribute('id');if(oldSideId)side.id=oldSideId;else side.removeAttribute('id');if(oldMainId)main.id=oldMainId;else main.removeAttribute('id');mapTip.textContent=oldMapTip;modelTip.textContent=oldModelTip;};
   }
   function sync(){if(media.matches&&ready&&!dispose)dispose=mount();else if(!media.matches&&dispose){dispose();dispose=null;}}

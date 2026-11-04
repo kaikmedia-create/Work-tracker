@@ -1,0 +1,33 @@
+/* On phones the map and its primary action share one visual viewport. */
+body[data-crop-ui]:not([data-mode=choose]) {display:flex!important;flex-direction:column;height:var(--phone-height,100dvh)!important;min-height:0!important;overflow:hidden!important;}
+body[data-crop-ui] .topbar {flex:none;min-height:48px;height:48px;padding-block:2px;}
+[data-crop-ui] .brand img {width:28px;height:28px;} [data-crop-ui] .brand small:not(.phone-privacy){display:none;}
+[data-crop-ui] .brand .phone-privacy {display:block;font:500 10px/1.25 system-ui;letter-spacing:0;color:#596c60;text-transform:none;}
+[data-crop-ui] .phone-privacy:empty,[data-crop-ui]:not([data-mode=choose])>.access-note {display:none;}
+[data-crop-ui] .header-actions .phone-security {max-width:260px;margin:4px;padding:8px 6px 2px;border-top:1px solid #d8dfd8;font:12px/1.4 system-ui;color:#496050;}
+[data-crop-ui] .header-actions {max-height:calc(var(--phone-height,100dvh) - 56px);overflow:auto;}
+body[data-crop-ui]>.workspace:not([hidden]) {flex:1 1 0!important;height:auto!important;min-height:0!important;padding:0!important;overflow:hidden!important;}
+[data-crop-ui] .sidebar {flex:1 1 0;overflow:auto!important;overscroll-behavior:contain;scroll-padding-block:8px;}
+[data-crop-ui][data-phone-pane=edit] .main {flex:0 1 auto;max-height:40%;overflow:auto!important;}
+[data-crop-ui][data-phone-pane=preview] .main {display:flex;flex:1 1 0;flex-direction:column;overflow:auto!important;padding:4px max(8px,env(safe-area-inset-right)) 3px max(8px,env(safe-area-inset-left));}
+[data-crop-ui] .stage-top {display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;margin:0 2px 4px;justify-content:space-between;}
+[data-crop-ui] #stage-eyebrow {display:none;} [data-crop-ui] .stage-top h2 {margin:0;font-size:20px;line-height:1.25;}
+[data-crop-ui] .stage-top .view-tabs {margin:0;max-width:100%;padding:1px;} [data-crop-ui] .view-tabs button {padding:4px 8px;white-space:nowrap;}
+[data-crop-ui][data-need-map][data-map-open] .view-tabs {display:none;}
+[data-crop-ui][data-phone-pane=preview] .stage {flex:1 0 min(130px,30dvh)!important;height:auto!important;min-height:0!important;border-radius:11px;}
+[data-crop-ui][data-map-open] .map-tip {display:none;}
+[data-crop-ui] #phone-map-tools {position:absolute;left:6px;top:6px;min-height:44px;padding:0 11px;background:#fffefa;color:#214638;border:1px solid #cdd8ce;border-radius:9px;font-size:12px;}
+[data-crop-ui] .map-controls {right:6px;top:6px;} [data-crop-ui] .attribution {font-size:10px;color:#33483c;}
+[data-crop-ui] .stage-bottom {margin:3px 0 0;padding:0 4px;gap:4px 8px;min-height:32px;border:0;background:transparent;}
+[data-crop-ui] .stage-bottom .stat {display:none;} [data-crop-ui] .stage-bottom .stat:nth-child(3) {display:block;min-width:0;flex:1;}
+[data-crop-ui] .stage-bottom .stat:nth-child(3) span {display:none;} [data-crop-ui] .stage-bottom .stat strong {font-size:12px;}
+[data-crop-ui] .quality-button {min-height:44px;padding:3px 8px;font-size:12px;} [data-crop-ui] .main-footer {display:none;}
+[data-crop-ui] #phone-dock {position:static;flex:none;z-index:10;gap:6px;padding:4px var(--safe-r) max(4px,env(safe-area-inset-bottom)) var(--safe-l);background:#fffefa;}
+[data-crop-ui] #phone-dock button {min-height:45px;} [data-crop-ui] #phone-dock button[hidden] {display:none!important;}
+[data-crop-ui] #phone-dock #phone-crop-action,[data-crop-ui][data-phone-pane=edit] #phone-dock #phone-preview {background:#214c3f;color:white;flex:1.5;}
+[data-crop-ui][data-phone-pane=edit] #phone-dock #phone-edit {background:transparent;color:#50685c;}
+[data-crop-ui] #phone-map-dialog {width:min(340px,calc(100% - 24px));padding:18px;}
+[data-crop-ui] #phone-map-dialog h3 {margin:0 0 8px;font:600 20px/1.2 Georgia,serif;}
+[data-crop-ui] #phone-map-dialog p {font-size:14px;line-height:1.5;}
+[data-crop-ui] #phone-map-dialog button {min-height:44px;border:1px solid #cdd8ce;background:#eef3ed;color:#214638;border-radius:8px;margin:3px;padding:0 10px;}
+@media (orientation:landscape) and (max-height:550px){[data-crop-ui] .stage-top {flex-wrap:nowrap;} [data-crop-ui] .stage-bottom {margin:0;min-height:0;}}
