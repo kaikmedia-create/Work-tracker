@@ -1,0 +1,19 @@
+name: Public international building test inputs
+on:
+  push:
+    branches: [qa/landmarks26]
+    paths: ['.github/workflows/rs26-world-samples.yml']
+permissions: {}
+jobs:
+  map:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: Read building data in two small city blocks
+        run: |
+          set -eu
+          for entry in 'new-york:-73.9870,40.74765,-73.9846,40.74915' 'sydney:151.2144,-33.8585,151.2167,-33.8563'; do
+            city=${entry%%:*}; bounds=${entry#*:}; curl --fail --max-time 40 -A 'ReliefStudio/26 geographic geometry regression' "https://api.openstreetmap.org/api/0.6/map.json?bbox=$bounds" -o "$city.json"
+          done
+      - uses: actions/upload-artifact@v4
+        with: {name: international-osm-inputs, path: '*.json', retention-days: 1}
