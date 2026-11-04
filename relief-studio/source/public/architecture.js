@@ -257,6 +257,15 @@ function architecturePatches(data,s,terrainAt,w,h,scale){
   const spec=roofSpec(obj,scale),frame=roofFrame(rings[0],tag);
   const explicitAngle=Number(tag['roof:angle']);
   if(spec.estimatedRoof&&Number.isFinite(explicitAngle)&&explicitAngle>0&&explicitAngle<85){spec.roof=Math.tan(explicitAngle*Math.PI/180)*(frame.umax-frame.umin)/((spec.shape==='skillion'?1:2)*scale);spec.estimatedRoof=false;}
+  // Never use an arbitrary default height as a ceiling for a documented roof rise.
+  const checkedTotal=Number.isFinite(override.height)||metres(tag.height)>0||Number(tag['building:levels'])>0||!['Schätzwert','Standardwert'].includes(b.heightSource)||b.worldSource?.fields?.includes('height');
+  if(!checkedTotal&&spec.shape!=='flat'&&!spec.unsupported&&!b.detailRoof){
+   const span=Math.min(frame.umax-frame.umin,frame.vmax-frame.vmin)/scale;
+   if(!Number.isFinite(spec.roof)&&tag['building:part']==='roof'&&['dome','spherical','onion','round','cone'].includes(spec.shape)){
+    spec.roof=R.clamp(span*.5,.10,55);spec.estimatedRoof=true;
+   }
+   if(Number.isFinite(spec.roof)&&spec.roof>0){const eaves=Math.max(spec.minHeight,Number(b.height)||0,1);spec.total=R.clamp(eaves+spec.roof,.2,1000);stats.estimatedTotals=(stats.estimatedTotals||0)+1;}
+  }
   const model=referenceFor(b),reference=model?referencePatches(b,model,data.bounds,w,h,scale,foot,border,override):null;
   const item=!reference&&lookupRoof(b);const inferred=!reference&&!item&&spec.shape==='flat'&&!spec.unsupported&&localShape(b);if(inferred){spec.shape=inferred;spec.roof=NaN;spec.estimatedRoof=true;stats.contextRoofs++;}const parts=reference||(item?measuredRoof(polys,item,foot,scale,w,h,Number.isFinite(override.height)?override.height:metres(tag.height)):roofPieces(polys,frame,spec,foot,scale));
   if(reference){stats.referenceModels++;stats.referenceFaces+=reference.length;}else if(item){stats.measuredRoofs++;if(!stats.roofSources.includes(item.source))stats.roofSources.push(item.source);}else if(!inferred&&!tag['roof:shape']&&!tag['building:roof:shape']&&!b.partIds?.length&&!tag['rs:wall'])stats.plainFootprints++;

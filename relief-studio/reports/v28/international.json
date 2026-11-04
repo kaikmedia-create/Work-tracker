@@ -87,21 +87,22 @@
         "underground": 0,
         "measuredRoofs": 0,
         "roofSources": [],
+        "estimatedTotals": 76,
         "repairLimit": 198,
-        "contactRepairs": 16,
+        "contactRepairs": 1,
         "repairPasses": 1,
         "xySeamWelds": 0,
         "maxXYSeamShift": 0,
         "chainSplits": 0,
-        "zeroAreaRetriangulations": 1,
+        "zeroAreaRetriangulations": 0,
         "verticalSeamSplits": 0
       },
       "geometry": {
-        "triangles": 192698,
-        "vertices": 96351,
+        "triangles": 185898,
+        "vertices": 92951,
         "badEdges": 0,
         "components": 1,
-        "volume": 113282.17761925414,
+        "volume": 131687.81909477198,
         "degenerate": 0
       },
       "ok": true
