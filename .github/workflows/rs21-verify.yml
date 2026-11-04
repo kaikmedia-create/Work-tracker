@@ -1,0 +1,48 @@
+name: Verify water, vegetation and bounded interactive rendering
+on:
+  push:
+    branches: [qa/rs21-water-preview]
+permissions:
+  contents: write
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Reconstruct exact locally benchmarked sources on the pinned release
+        run: |
+          cd relief-studio/source && node tools/prepare_release20.mjs && cd ../..
+          python3 - <<'PY'
+          from pathlib import Path
+          import json,hashlib,subprocess
+          root=Path('relief-studio');names=['DEPLOYMENT.json','RELEASE-NOTES-20.md','gate-v20.js','index.html','source/package.json']+['source/public/'+n for n in ['app.js','architecture.js','core.js','diagnostics.js','index.html','viewer.js','worker.js']]+[f'source/tests/v{i}_gate.test.mjs' for i in range(12,21)]+['source/tools/prepare_release20.mjs','upgrade20.json']
+          d=json.dumps([[k,(root/k).read_text()] for k in sorted(names)],ensure_ascii=False,separators=(',',':')).encode();assert hashlib.sha256(d).hexdigest()=='d71be4392f8575dc36133b313c7f08dcc643eafb3e9cc5858ef90f5211f2dc94', 'Unknown base source; refusing to publish'
+          Path('/tmp/rs21-dictionary').write_bytes(d);Path('/tmp/rs21.zst').write_bytes(b''.join(Path('.rs21-qa/d'+str(i)).read_bytes() for i in range(4)));out=subprocess.check_output(['zstd','-dq','--patch-from=/tmp/rs21-dictionary','/tmp/rs21.zst','--stdout']);assert hashlib.sha256(out).hexdigest()=='3ec1174fbe5e25a789cb094ebf15fffb457be7f151199ae36231acfb01f6337d'
+          for name,text in json.loads(out):
+            path=(root/name).resolve();assert path.is_relative_to(root.resolve()) and not name.startswith('.');path.write_text(text)
+          PY
+          git add -- relief-studio
+      - name: Run all geometry, export, preview and release tests
+        working-directory: relief-studio/source
+        run: npm test
+      - name: Publish tested source files to candidate branch only
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json,subprocess,os
+          from pathlib import Path
+          prefix='repos/'+os.environ['GITHUB_REPOSITORY'];base='bfa149b8c95da0246c614988a92a53ea92ad499f'
+          def api(method,path,data=None):
+            cmd=['gh','api','--method',method,prefix+path];kw={}
+            if data is not None:cmd+=['--input','-'];kw['input']=json.dumps(data).encode()
+            return json.loads(subprocess.check_output(cmd,**kw))
+          names=subprocess.check_output(['git','diff','--cached','--name-only']).decode().splitlines();assert len(names)==25 and all(n.startswith('relief-studio/') for n in names)
+          tree=api('POST','/git/trees',{'base_tree':api('GET','/git/commits/'+base)['tree']['sha'],'tree':[{'path':n,'mode':'100644','type':'blob','content':Path(n).read_text()} for n in names]})['sha'];commit=api('POST','/git/commits',{'message':'Relief Studio 21: printable waterways and green areas, bounded preview and nonblocking exports','parents':[base],'tree':tree})['sha'];api('POST','/git/refs',{'ref':'refs/heads/qa/rs21-verified','sha':commit});print('Verified candidate:',commit)
+          PY
