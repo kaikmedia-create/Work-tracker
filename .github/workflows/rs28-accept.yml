@@ -1,0 +1,41 @@
+name: Accept international architecture and live measured roof models
+on:
+  push:
+    branches: [qa/world-building-details-28]
+    paths: ['.github/workflows/rs28-accept.yml','review28/**']
+permissions: {actions: read, contents: write}
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with: {path: qa}
+      - uses: actions/checkout@v4
+        with: {path: repo, ref: 880cc8deab705a52e381cf16840883f068bb7cc9}
+      - uses: actions/checkout@v4
+        with: {path: base, ref: 296fc05a00d1d792646d8dbc0cbc29b03d7c7499}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - uses: actions/download-artifact@v4
+        with: {run-id: 41852419235, name: public-world-inputs, path: inputs, github-token: '${{ github.token }}'}
+      - name: Preserve mapped roof heights and run the full regression suite
+        run: |
+          python qa/review28/refine.py repo/relief-studio base/relief-studio
+          cd repo/relief-studio/source; npm test >/tmp/tests.log 2>&1 || { grep -A45 '^not ok' /tmp/tests.log | head -150; tail -25 /tmp/tests.log; exit 1; }; tail -9 /tmp/tests.log
+      - name: Check live Amsterdam in Chromium
+        run: |
+          mkdir -p results; cp qa/review28/amsterdam.mjs check.mjs; npm install --no-audit --no-fund --ignore-scripts puppeteer-core@24.9.0
+          python -m http.server 8765 --directory repo >/tmp/http.log 2>&1 &
+          node check.mjs
+      - name: Seven international scenes must be closed solids
+        run: |
+          node --max-old-space-size=4300 repo/relief-studio/source/tests/world28-cities.mjs inputs results
+          cp results/*.json repo/relief-studio/reports/v28/; tail -9 /tmp/tests.log > repo/relief-studio/reports/v28/test-summary.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: accepted-results, path: results, retention-days: 1, if-no-files-found: ignore}
+      - name: Stage reviewed and tested commit, no force push
+        working-directory: repo
+        run: |
+          git config user.name 'Relief Studio QA'; git config user.email 'github-actions[bot]@users.noreply.github.com'; git add -u relief-studio; git add relief-studio/reports/v28/browser-amsterdam.json; git commit -m 'Validate measured Dutch roofs in browser and preserve tagged roof rise on international landmarks'; git push origin HEAD:refs/heads/feature/world-details-28-release-${GITHUB_RUN_ID}
