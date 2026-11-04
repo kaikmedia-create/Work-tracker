@@ -1,0 +1,10 @@
+{
+  "release": "26.0.0",
+  "sourceCommit": "53b689adc22bb737f401059ed8f03c4c0a73bc79",
+  "ciRun": 41846296398,
+  "suite": {"passed":312,"failed":0,"skipped":0},
+  "weinheim": {"privateSavedProject":true,"extentKm":[2.258,2.117],"printWidthMm":200,"referenceBuildings":6,"referenceRoofTriangles":432,"inputBuildingAndWallObjects":4226,"omitted":0,"outlineOnlyWithoutRoofTag":3762,"unchangedSettings":true,"browser":"Chromium with WebGL disabled; actual project file input and STL export button, no uncaught JavaScript errors","binaryStl":{"triangles":1765852,"connectedBodies":1,"openOrMispairedEdges":0,"zeroAreaTriangles":0,"positiveVolume":true,"sha256":"5389eb0d3dd35746a07d44b63c08bf47526230eaa13a5258069656a9927714ab"}},
+  "largerWeinheim": {"extentKm":[3.2,3.0],"printWidthMm":200,"referenceBuildings":6,"builtTriangles":2282208},
+  "internationalTests": {"source":"Small real OpenStreetMap /api/0.6/map.json samples; flat test terrain, geometry checked independently; not a full fresh terrain workflow","fixtureWorkflow":41845024649,"newYork":{"landmark":"Empire State Building","outline":"way/34633854","linkedParts":11,"sceneTriangles":161202,"connectedBodies":1,"badEdges":0,"zeroAreaTriangles":0},"sydney":{"landmark":"Sydney Opera House","outline":"relation/9596872","linkedPartEntries":90,"sceneTriangles":161136,"connectedBodies":1,"badEdges":0,"zeroAreaTriangles":0,"unsupportedRoofEntries":45,"allShellShapesVerified":false}},
+  "limitations":"LoD2 is generalized, not a facade survey. Peterskirche roof tip at approximately 47 m is a reconstruction; the parish gives 48 m including the weathercock. No weathercock, facade ornaments, physical print or worldwide exact-building guarantee. See LANDMARK-SOURCES.md."
+}
