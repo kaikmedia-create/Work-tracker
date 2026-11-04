@@ -1,0 +1,54 @@
+name: Verify local high-resolution preview
+on:
+  push:
+    branches: [qa/local-hd22]
+permissions:
+  contents: write
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: review
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: 1cabc98e666d6312fe05eb80e7e68f7ebfad999e
+          path: candidate
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Assemble and check against tested preview and gate
+        run: |
+          cd candidate/relief-studio/source
+          node tools/prepare_release21.mjs
+          cd ../../..
+          python3 review/.hd-review/assemble.py candidate/relief-studio
+          cd candidate
+          echo '5b16bd075a37b7792a4f221f006c119bdf2475d7d5e2525c48b92c011f587739  relief-studio/upgrade22.json' | sha256sum -c
+          echo 'c25be7933b1b7037d556865a0a1a795fa4e679135217d93071088a288d3b25b2  relief-studio/gate-v22.js' | sha256sum -c
+          git add -- relief-studio/
+      - name: Run regression and HD render tests
+        working-directory: candidate/relief-studio/source
+        run: npm test
+      - name: Stage only verified application files on the feature branch
+        working-directory: candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json,os,subprocess,urllib.request
+          from pathlib import Path
+          api='https://api.github.com/repos/'+os.environ['GITHUB_REPOSITORY']
+          def req(route,body=None):
+            r=urllib.request.Request(api+route,data=json.dumps(body).encode() if body is not None else None,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json','User-Agent':'relief-hd-qa'});return json.load(urllib.request.urlopen(r,timeout=30))
+          base=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
+          paths=subprocess.check_output(['git','diff','--cached','--name-only','-z']).decode().split('\0')[:-1]
+          assert paths and all(x.startswith('relief-studio/') for x in paths)
+          tree=req('/git/trees',{'base_tree':req('/git/commits/'+base)['tree']['sha'],'tree':[{'path':x,'mode':'100644','type':'blob','content':subprocess.check_output(['git','show',':'+x]).decode()} for x in paths]})['sha']
+          commit=req('/git/commits',{'message':'Relief Studio 22: render the full print mesh locally in HD; cache stationary software views','parents':[base],'tree':tree})['sha']
+          req('/git/refs',{'ref':'refs/heads/feature/verified-local-hd22','sha':commit});print('Verified feature commit:',commit)
+          PY
