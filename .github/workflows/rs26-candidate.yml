@@ -1,0 +1,55 @@
+name: Verify source-based landmark geometry
+on:
+  push:
+    branches: [qa/landmarks26]
+    paths: ['.qa26/**','.github/workflows/rs26-candidate.yml']
+permissions:
+  contents: write
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with: {path: review, persist-credentials: false}
+      - uses: actions/checkout@v4
+        with: {path: candidate, ref: 833b7bf5fc77027fc1c7d6d291d7a01bbf46b6e8, persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Reproduce official roof triangles without user data
+        working-directory: candidate
+        run: |
+          pip -q install numpy==2.3.5 shapely==2.1.2 pyproj==3.7.2 lxml
+          curl --fail --max-time 70 --retry 1 -L 'https://opengeodata.lgl-bw.de/data/lod2/LoD2_32_475_5488_2_bw.zip' -o tile.zip
+          python ../review/.qa26/catalog.py
+      - name: Require the same 30 files that passed the local acceptance check
+        working-directory: candidate
+        run: |
+          node relief-studio/source/tools/prepare_release25.mjs
+          cp -a relief-studio original
+          python ../review/.qa26/runtime.py
+          python ../review/.qa26/release.py
+          git add -- relief-studio
+          python - <<'PY'
+          import hashlib as h,subprocess as s,pathlib
+          fs=sorted(n.removeprefix('relief-studio/') for n in s.check_output(['git','diff','--cached','--name-only']).decode().splitlines());rows=[n+':'+h.sha256((pathlib.Path('relief-studio')/n).read_bytes()).hexdigest()+'\n' for n in fs];print(''.join(rows));digest=h.sha256(''.join(rows).encode()).hexdigest();print(digest);assert len(fs)==30 and digest=='a066662ba0d6dbd924d0efc384ceb8bc04bb701eb975dcffd39d7b4d1da5b16d'
+          PY
+      - name: Test exact release including roof geometry, old projects and encrypted static preview
+        working-directory: candidate/relief-studio/source
+        run: npm test
+      - name: Stage only verified source on a new candidate ref
+        working-directory: candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python - <<'PY'
+          import json,os,subprocess as s,urllib.request as u
+          url='https://api.github.com/repos/'+os.environ['GITHUB_REPOSITORY']+'/git/'
+          def post(path,payload):
+           req=u.Request(url+path,data=json.dumps(payload).encode(),headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json'});return json.load(u.urlopen(req,timeout=45))
+          fs=s.check_output(['git','diff','--cached','--name-only']).decode().splitlines();assert len(fs)==30 and all(p.startswith('relief-studio/') for p in fs)
+          parent=s.check_output(['git','rev-parse','HEAD']).decode().strip();assert parent=='833b7bf5fc77027fc1c7d6d291d7a01bbf46b6e8'
+          tree=post('trees',{'base_tree':s.check_output(['git','rev-parse','HEAD^{tree}']).decode().strip(),'tree':[dict(path=p,mode='100644',type='blob',content=s.check_output(['git','show',':'+p]).decode()) for p in fs]})['sha'];commit=post('commits',dict(tree=tree,parents=[parent],message='Relief Studio 26: source-backed Peterskirche and international building and roof geometry'))['sha'];post('refs',{'ref':'refs/heads/feature/verified-landmarks-26','sha':commit});print(commit)
+          PY
