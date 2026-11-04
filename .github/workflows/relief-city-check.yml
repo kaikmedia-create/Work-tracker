@@ -1,0 +1,62 @@
+name: Relief city data QA
+on:
+  push:
+    branches: ['qa/relief-city-check-19']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  samples:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+    - name: Retrieve public reference data for reproducible city geometry tests
+      run: |
+        mkdir city-fixtures
+        cd city-fixtures
+        curl -fsSL --max-time 30 -o delft.json https://raw.githubusercontent.com/cityjson/cjio/35728539127f71b1d5ae458169ff84050e5e20ad/tests/data/delft.json
+        curl -fsSL --max-time 30 -o denhaag.json https://raw.githubusercontent.com/cityjson/cjio/35728539127f71b1d5ae458169ff84050e5e20ad/tests/data/DH_01_subs.city.json
+        sha256sum *.json
+    - uses: actions/upload-artifact@v4
+      with:
+        name: public-city-fixtures
+        path: city-fixtures
+        retention-days: 2
+    - name: Probe two small city areas using real Overpass and Terrarium data
+      run: |
+        mkdir live
+        python - <<'PY'
+        import json, math, pathlib, urllib.request, urllib.parse, time
+        path=pathlib.Path('live'); log=[]
+        for city,lon,lat in [('Heidelberg',8.706,49.411),('Berlin',13.409,52.521)]:
+          half=.18; dx=half/(111.32*math.cos(math.radians(lat))); dy=half/111.32
+          bounds=[lon-dx,lat-dy,lon+dx,lat+dy]; w,s,e,n=bounds
+          row={'city':city,'bounds':bounds,'requests':[]};log.append(row)
+          q=f'[out:json][timeout:20][bbox:{s:.6f},{w:.6f},{n:.6f},{e:.6f}];(way[building];way["building:part"];way[highway];way[natural=water];relation[type=multipolygon][building];relation[type=multipolygon][natural=water];);out geom qt;'
+          for host in ['https://ovp.dresel.systems/api/interpreter','https://overpass-api.de/api/interpreter']:
+            t=time.monotonic()
+            try:
+              req=urllib.request.Request(host,data=urllib.parse.urlencode({'data':q}).encode(),headers={'User-Agent':'ReliefStudio-QA/19 (+https://github.com/kaikmedia-create/Work-tracker)'})
+              with urllib.request.urlopen(req,timeout=35) as r: raw=json.loads(r.read(8000000))
+              assert 'remark' not in raw and isinstance(raw.get('elements'),list) and raw['elements']
+              (path/(city+'.json')).write_text(json.dumps(raw)); row['requests'].append({'host':host,'ok':True,'elements':len(raw['elements']),'seconds':round(time.monotonic()-t,2)}); break
+            except Exception as ex:
+              row['requests'].append({'host':host,'ok':False,'error':str(ex)[:240],'seconds':round(time.monotonic()-t,2)})
+              if getattr(ex,'code',None)==429: break
+          def xy(x,y): return int((x+180)/360*2**14),int((1-math.asinh(math.tan(math.radians(y)))/math.pi)/2*2**14)
+          x0,y0=xy(w,n);x1,y1=xy(e,s); row['terrain']=[]
+          for y in range(y0,y1+1):
+            for x in range(x0,x1+1):
+              key=f'14-{x}-{y}.png'
+              try:
+                with urllib.request.urlopen(f'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/14/{x}/{y}.png',timeout=12) as r: data=r.read(1000000)
+                assert data[:8]==b'\x89PNG\r\n\x1a\n'; (path/key).write_bytes(data);row['terrain'].append({'tile':key,'ok':True})
+              except Exception as ex: row['terrain'].append({'tile':key,'ok':False,'error':str(ex)[:240]})
+          (path/'requests.json').write_text(json.dumps(log,indent=2));print(json.dumps(row));time.sleep(2)
+        PY
+    - uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: live-city-probes
+        path: live
+        retention-days: 2
