@@ -1,0 +1,66 @@
+name: Phone workspace acceptance
+on:
+  push:
+    branches: [qa/phone-acceptance]
+    paths: ['.github/workflows/phone-browser-accept.yml','relief-studio/source/tests/phone_browser.py']
+permissions:
+  contents: write
+jobs:
+  accept:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+        with: {path: review, persist-credentials: false}
+      - uses: actions/checkout@v4
+        with: {ref: b655d7433405fa51edd776d6a502ad82bc525ccb, path: baseline, persist-credentials: false}
+      - uses: actions/checkout@v4
+        with: {ref: d778438bbfe115766a66a389e31a361b20a10c08, path: candidate}
+      - uses: actions/setup-node@v4
+        with: {node-version: 22}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Apply fixes from initial phone-size testing, then rebuild authenticated preview
+        run: |
+          set -eu
+          cd candidate/relief-studio
+          for f in index.html gate-v28.js source/public/app.js source/tools/prepare_release28.mjs; do cp "../../baseline/relief-studio/$f" "$f"; done
+          cat >>source/public/phone-workspace.css <<'CSS'
+          [data-phone] .header-actions :is(#new-project,#export-top):not([hidden]) {display:block;}
+          [data-phone] .welcome-copy p br {display:initial;}
+          [data-phone] .steps button {width:100%;min-width:44px;}
+          [data-phone] .search button {min-width:44px;}
+          [data-phone] .model-controls {display:grid;grid-template-columns:repeat(4,minmax(0,1fr));}
+          [data-phone] .model-controls output {align-self:center;}
+          CSS
+          cp ../../review/relief-studio/source/tests/phone_browser.py source/tests/
+          python source/tools/build_phone_layer.py
+          git rm ../.github/workflows/phone-ui-candidate.yml
+      - name: Full existing application tests on final files
+        working-directory: candidate/relief-studio/source
+        run: npm test > "$RUNNER_TEMP/phone-suite.log" || { tail -100 "$RUNNER_TEMP/phone-suite.log"; exit 1; }
+      - name: Install two test browser engines
+        run: |
+          pip install playwright==1.57.0
+          python -m playwright install --with-deps chromium webkit
+      - name: PIN gate, device switching, real exports and exact desktop screenshots
+        run: |
+          set -eu
+          python -m http.server 8788 --bind 127.0.0.1 > "$RUNNER_TEMP/phone-http.log" 2>&1 &
+          server=$!; trap 'kill "$server" || true' EXIT
+          for engine in chromium webkit; do PHONE_ENGINE=$engine python candidate/relief-studio/source/tests/phone_browser.py; done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: phone-browser-evidence, path: phone-results/, retention-days: 3}
+      - name: Stage only the accepted files and browser reports
+        working-directory: candidate
+        run: |
+          set -eu
+          mkdir -p relief-studio/reports/phone
+          cp ../phone-results/*.json relief-studio/reports/phone/
+          tail -10 "$RUNNER_TEMP/phone-suite.log" > relief-studio/reports/phone/test-summary.txt
+          git add relief-studio/index.html relief-studio/gate-v28.js relief-studio/upgrade28-phone.json relief-studio/source/public/{app.js,phone-workspace.css} relief-studio/source/tests/phone_browser.py relief-studio/reports/phone/
+          git config user.name 'Relief Studio CI'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Verify phone UI, accessible project actions and unchanged desktop pixels'
+          git push origin HEAD:refs/heads/candidate/phone-tested-${GITHUB_RUN_ID}
