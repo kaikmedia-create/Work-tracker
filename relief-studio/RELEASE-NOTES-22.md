@@ -1,0 +1,3 @@
+# HD-Vorschau auf dem Endgerät
+
+HD ist standardmäßig eingeschaltet: Mit WebGL 2 verwendet jede Ansicht die bereits im Grafikspeicher liegende vollständige Geometrie. Ohne WebGL bleibt die schnelle Drehansicht verfügbar; nach dem Loslassen liefert ein lokaler Raster-Worker ein tiefengeprüftes Bild aller Dreiecke. Das fertige Bild wird bis zur nächsten Änderung wiederverwendet. Die Schaltfläche HD wechselt zur schnellen Ansicht. Es werden weder Projektdaten hochgeladen noch STL und 3MF geändert. Die Bildgröße berücksichtigt die Display-Pixeldichte (maximal 3×, 4096 Pixel je Achse und 6 Megapixel).

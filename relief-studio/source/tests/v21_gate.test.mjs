@@ -1,3 +1,4 @@
+import {createHash} from 'node:crypto';
 import test from 'node:test';import assert from 'node:assert/strict';import {readFile,mkdir,writeFile} from 'node:fs/promises';
 import {dirname,join} from 'node:path';import {fileURLToPath} from 'node:url';import {webcrypto} from 'node:crypto';import vm from 'node:vm';
 const root=dirname(dirname(fileURLToPath(import.meta.url))),site=join(root,'..'),code=await readFile(join(site,'gate-v21.js'),'utf8');
@@ -13,10 +14,10 @@ function instance({pin='2808',fault='',fast=false}={}){
   URL:{createObjectURL:blob=>(downloaded=blob,'blob:test'),revokeObjectURL(){}},setTimeout:fast?(fn,ms)=>setTimeout(fn,Math.min(ms,10)):setTimeout,clearTimeout};
  vm.runInNewContext(code,ctx);return {load:()=>els.login.onsubmit({preventDefault(){}}),html:()=>html,files:()=>ctx.window.RELIEF_SOURCE_FILES,els,calls:()=>calls,downloaded:()=>downloaded};
 }
-test('v21 published entry loads v21 gate',async()=>assert.match(await readFile(join(site,'index.html'),'utf8'),/gate-v21\.js\?v=21/));
+test('v21 published entry loads v21 gate',async()=>assert.match(await readFile(join(site,'index.html'),'utf8'),/gate-v22\.js\?v=22/));
 test('v21 gate reconstructs exact current source and embeds exact worker bytes',async()=>{
  const x=instance();await x.load();assert(x.files(),x.els.status.textContent);
- for(const name of ['data.js','app.js','diagnostics.js','index.html','architecture.js','worker.js','core.js','style.css','viewer.js'])assert.equal(x.files()['public/'+name],await readFile(join(root,'public',name),'utf8'),name);
+ for(const name of ['data.js','app.js','diagnostics.js','index.html','architecture.js','worker.js','core.js','style.css','viewer.js']){const key='public/'+name,c=JSON.parse(await readFile(join(site,'upgrade22.json'),'utf8')).changes[key];if(c)assert.equal(createHash('sha256').update(x.files()[key]).digest('hex'),c.base,name);else assert.equal(x.files()['public/'+name],await readFile(join(root,'public',name),'utf8'),name);}
  assert(x.html().includes('RELIEF STUDIO <b>21.0</b>'));assert(x.html().includes('<span class="version">21</span>'));assert(x.html().includes('notice-diagnose'));
  const worker=JSON.parse(x.html().match(/window\.RS_WORKER_SOURCE=(.*?);<\/script>/s)[1]);
  assert.equal(worker,x.files()['public/core.js']+'\n'+x.files()['public/architecture.js']+'\n'+x.files()['public/worker.js'].replace("importScripts('core.js','architecture.js');",''));

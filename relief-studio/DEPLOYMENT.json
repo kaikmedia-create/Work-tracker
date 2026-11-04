@@ -1,13 +1,13 @@
 {
-  "version": "21.0.0",
+  "version": "22.0.0",
   "account": "kaikmedia-create",
   "repository": "kaikmedia-create/Work-tracker",
   "folder": "relief-studio",
   "target": "github-pages",
   "status": "requires-deployment-check",
-  "base_commit": "bfa149b8c95da0246c614988a92a53ea92ad499f",
+  "base_commit": "1cabc98e666d6312fe05eb80e7e68f7ebfad999e",
   "entry": "index.html",
-  "gate": "gate-v21.js",
+  "gate": "gate-v22.js",
   "base_package": "bundle10.json",
   "updates": [
     "upgrade11.json",
@@ -21,12 +21,13 @@
     "upgrade18.json",
     "upgrade19.json",
     "upgrade20.json",
-    "upgrade21.json"
+    "upgrade21.json",
+    "upgrade22.json"
   ],
-  "source_in_repository": "Water and green relief; bounded interactive preview and worker exports.",
+  "source_in_repository": "Full geometry on the GPU, locally rendered HD software stills.",
   "checks": {
     "runner": "npm test",
-    "feature": "tests/surfaces21.test.mjs"
+    "feature": "tests/hd22.test.mjs"
   },
   "gating": "static preview PIN; not server-side access control",
   "code_commit": null,
