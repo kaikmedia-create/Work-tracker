@@ -1,0 +1,23 @@
+name: Phone WebKit file downloads
+on:
+  push:
+    branches: [qa/phone-acceptance]
+    paths: ['.github/workflows/phone-webkit-files.yml', 'relief-studio/source/tests/phone_webkit_download.py']
+permissions: {contents: read}
+jobs:
+  webkit:
+    runs-on: ubuntu-24.04
+    container: mcr.microsoft.com/playwright/python:v1.57.0-noble
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+        with: {path: checks, persist-credentials: false}
+      - uses: actions/checkout@v4
+        with: {ref: 10c6ab778e02047a5b4f43ddc49f79e54eaff714, path: site, persist-credentials: false}
+      - name: Test the original phone UI and file downloads
+        run: |
+          pip install -q playwright==1.57.0
+          python -m http.server 8788 --bind 127.0.0.1 --directory site > /tmp/phone-server.log 2>&1 &
+          python checks/relief-studio/source/tests/phone_webkit_download.py site/relief-studio/source http://127.0.0.1:8788/relief-studio/
+      - uses: actions/upload-artifact@v4
+        with: {name: webkit-exports, path: webkit-exports.json, retention-days: 3}
