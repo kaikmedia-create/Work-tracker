@@ -56,7 +56,7 @@ function osmQuery(b,layer='base'){
  if(!['base','geometry','relations'].includes(layer))throw Error('Unbekannte Kartenebene.');
  // qt avoids sorting thousands of objects by ID. Keep FULL polygon geometry:
  // clipping relation members on the server would create false coastlines/holes.
- return `[out:json][timeout:25][maxsize:134217728][bbox:${boxText(b)}];(${layer!=='relations'?WAY_FILTERS:''}${layer!=='geometry'?REL_FILTERS:''});out geom qt;`;
+ return `[out:json][timeout:25][maxsize:134217728][bbox:${boxText(b)}];(${layer!=='relations'?WAY_FILTERS:''}${layer!=='geometry'?REL_FILTERS:''});out geom qt;${layer==='geometry'?'':'relation[type=building];out body qt;'}`; 
 }
 function poiQuery(b){return `[out:json][timeout:8][maxsize:33554432][bbox:${boxText(b)}];(nwr[historic][name];nwr[heritage][name];nwr[man_made~"^(tower|lighthouse)$"][name];nwr[tourism~"^(museum|artwork|attraction|gallery|viewpoint)$"][name];nwr[amenity=place_of_worship][name];);out center qt;`;}
 // The cache has a stable name and bounded disk + RAM usage. Storage never blocks a

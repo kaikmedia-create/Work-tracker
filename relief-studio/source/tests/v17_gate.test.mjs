@@ -13,7 +13,7 @@ function instance({pin='2808',fault='',fast=false}={}){
   URL:{createObjectURL:blob=>(downloaded=blob,'blob:test'),revokeObjectURL(){}},setTimeout:fast?(fn,ms)=>setTimeout(fn,Math.min(ms,10)):setTimeout,clearTimeout};
  vm.runInNewContext(code,ctx);return {load:()=>els.login.onsubmit({preventDefault(){}}),html:()=>html,files:()=>ctx.window.RELIEF_SOURCE_FILES,els,calls:()=>calls,downloaded:()=>downloaded};
 }
-test('v17 published entry loads v17 gate',async()=>assert.match(await readFile(join(site,'index.html'),'utf8'),/gate-v25\.js\?v=25/));
+test('v17 published entry loads v17 gate',async()=>assert.match(await readFile(join(site,'index.html'),'utf8'),/gate-v26\.js\?v=26/));
 test('v17 gate reconstructs exact current source and embeds exact worker bytes',async()=>{
  const x=instance();await x.load();assert(x.files(),x.els.status.textContent);
  const previous=JSON.parse(await readFile(join(site,'upgrade18.json'),'utf8')).changes;

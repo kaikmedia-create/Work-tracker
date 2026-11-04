@@ -1,13 +1,13 @@
 {
-  "version": "25.0.0",
+  "version": "26.0.0",
   "account": "kaikmedia-create",
   "repository": "kaikmedia-create/Work-tracker",
   "folder": "relief-studio",
   "target": "github-pages",
   "status": "requires-deployment-check",
-  "base_commit": "eea4cb1c631e0fee0f727187890df833c9dad4d9",
+  "base_commit": "833b7bf5fc77027fc1c7d6d291d7a01bbf46b6e8",
   "entry": "index.html",
-  "gate": "gate-v25.js",
+  "gate": "gate-v26.js",
   "base_package": "bundle10.json",
   "updates": [
     "upgrade11.json",
@@ -25,12 +25,13 @@
     "upgrade22.json",
     "upgrade23.json",
     "upgrade24.json",
-    "upgrade25.json"
+    "upgrade25.json",
+    "upgrade26.json"
   ],
-  "source_in_repository": "Conforming exact vertical wall subdivisions; no adjustment of the input geometry.",
+  "source_in_repository": "Georeferenced roof models, explicit building relations, roof source provenance and import.",
   "checks": {
     "runner": "npm test",
-    "feature": "tests/vertical-seam25.test.mjs"
+    "feature": "tests/landmarks26.test.mjs"
   },
   "gating": "static preview PIN; not server-side access control",
   "code_commit": null,

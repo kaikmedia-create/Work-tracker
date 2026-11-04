@@ -216,11 +216,11 @@ function parseOSM(raw,bounds) {
   return '';
  }
  for(const e of els.filter(e=>e.type==='relation')){
-  const t=e.tags||{}, k=kind(t);if(!k)continue;
+  const t=e.tags||{}, k=kind(t);if(!k||t.type==='building')continue;
   const members=e.members||[],outers=joinSegments(members.filter(m=>m.type==='way'&&m.role!=='inner').map(coords)),inners=joinSegments(members.filter(m=>m.type==='way'&&m.role==='inner').map(coords));
   if(!outers.length){warnings.push('Unvollständige Relation '+e.id);continue;}
   for(const r of outers)feature(e,[r,...inners.filter(h=>insideRing(h[0][0],h[0][1],r))],k);
-  for(const m of members)if(m.type==='way')used.add(m.ref);
+  for(const m of members)if(m.type==='way'&&m.role!=='inner')used.add(k+':'+(k==='building'&&t['building:part']&&t['building:part']!=='no'?'part:':'')+m.ref);
  }
  for(const e of els){
   const t=e.tags||{};let c=e.type==='node'?[[e.lon,e.lat]]:coords(e);
@@ -236,7 +236,7 @@ function parseOSM(raw,bounds) {
     }
    }
 
-   if(!used.has(e.id)){const k=kind(t);if(k==='coastline'){}else if(k&&c.length>=4&&Math.abs(c[0][0]-c.at(-1)[0])+Math.abs(c[0][1]-c.at(-1)[1])<1e-7)feature(e,[c],k);}
+   {const k=kind(t);if(used.has(k+':'+(k==='building'&&t['building:part']&&t['building:part']!=='no'?'part:':'')+e.id)){}else if(k==='coastline'){}else if(k&&c.length>=4&&Math.abs(c[0][0]-c.at(-1)[0])+Math.abs(c[0][1]-c.at(-1)[1])<1e-7)feature(e,[c],k);}
   }
   const named=String(t.name||t['name:en']||t['name:de']||'').trim();
   const isPOI=!!(t.historic||t.heritage||['attraction','museum','artwork','gallery','viewpoint'].includes(t.tourism)||t.amenity==='place_of_worship'||['tower','lighthouse'].includes(t.man_made)||/castle|cathedral|church/.test(t.building||''));
@@ -248,12 +248,21 @@ function parseOSM(raw,bounds) {
    }
   }
  }
+ // A Simple 3D Buildings relation is a membership list, not a multipolygon.
+ const byId=new Map(buildings.map(b=>[b.id,b])),owners=new Map(),byOutline=new Map();
+ for(const e of els){if(e.tags?.type!=='building'||e.type!=='relation')continue;
+  const members=e.members||[],outlines=members.filter(m=>m.role==='outline').map(m=>m.type+'/'+m.ref).filter(id=>byId.has(id));
+  if(outlines.length!==1)continue;const id=outlines[0];if(!byOutline.has(id))byOutline.set(id,new Set());
+  for(const m of members){const pid=m.type+'/'+m.ref;if(m.role!=='part'||pid===id||!byId.get(pid)?.tags?.['building:part']||byId.get(pid).tags['building:part']==='no')continue;
+   byOutline.get(id).add(pid);if(!owners.has(pid))owners.set(pid,new Set());owners.get(pid).add(id);
+  }
+ }
  const parts=buildings.filter(b=>b.tags['building:part']&&b.tags['building:part']!=='no'),cells=new Map();
  for(const b of parts){const c=centroid(b.rings[0]),key=Math.floor(c[0]*100)+','+Math.floor(c[1]*100);if(!cells.has(key))cells.set(key,[]);cells.get(key).push({b,c});}
- for(const b of buildings){if(b.tags['building:part'])continue;const box=ringBox(b.rings[0]);b.partIds=[];
+ for(const b of buildings){if(b.tags['building:part'])continue;const box=ringBox(b.rings[0]);b.partIds=[...(byOutline.get(b.id)||[])];
   // Clamp query span: objects far beyond the selection must not cause huge loops.
   for(let y=Math.max(-1,Math.floor(box[1]*100));y<=Math.min(101,Math.ceil(box[3]*100));y++)for(let x=Math.max(-1,Math.floor(box[0]*100));x<=Math.min(101,Math.ceil(box[2]*100));x++)
-   for(const p of cells.get(x+','+y)||[])if(inside(...p.c,b.rings)&&p.b.id!==b.id)b.partIds.push(p.b.id);
+   for(const p of cells.get(x+','+y)||[])if(!owners.has(p.b.id)&&inside(...p.c,b.rings)&&p.b.id!==b.id)b.partIds.push(p.b.id);
  }
  const kept=buildings;
  // Fail closed if a coastline geometry would flood a built-up part of town.
