@@ -4,36 +4,214 @@
   "testedSourceCommit": "a15ac5bfc339b97ce93056c696a27755f064b37c",
   "qaWorkflowRun": 41798105715,
   "preliminaryDataProbeRun": 41795513922,
-  "unitAndRegressionSuite": {"passed":211,"failed":0,"skipped":0},
+  "unitAndRegressionSuite": {
+    "passed": 212,
+    "failed": 0,
+    "skipped": 0
+  },
   "browserLive": {
     "method": "Clean Chromium context for each case; verified release HTML on loopback, actual external OSM and Terrarium services. Both file downloads initiated by actual UI buttons. STL binary length/count, 3MF ZIP integrity/count compared with preview. Not a test of the user's own connection or a physical print.",
-    "columns": ["city","widthKm","heightKm","mapLoadMs","demTiles","inputBuildingObjects","triangles","stlBytes","threeMfBytes","totalSeconds"],
-    "passed": [
-      ["Berlin",0.36,0.36,6207,1,121,101198,5059984,7167322,18.04],
-      ["Heidelberg",0.36,0.36,4528,2,566,243164,12158284,17407549,18.94],
-      ["Weinheim",0.75,0.75,5121,2,304,81358,4067984,5745365,10.62],
-      ["Weinheim",2.027,1.901,8110,6,3314,624608,31230484,45907065,38.17]
+    "columns": [
+      "city",
+      "widthKm",
+      "heightKm",
+      "mapLoadMs",
+      "demTiles",
+      "inputBuildingObjects",
+      "triangles",
+      "stlBytes",
+      "threeMfBytes",
+      "totalSeconds"
     ],
-    "eachCase": {"cachedBrowserProfile":false,"automaticResumes":0,"completedMandatoryOSMPackages":2,"stlResult":"passed","threeMfResult":"passed"}
+    "passed": [
+      [
+        "Berlin",
+        0.36,
+        0.36,
+        6207,
+        1,
+        121,
+        101198,
+        5059984,
+        7167322,
+        18.04
+      ],
+      [
+        "Heidelberg",
+        0.36,
+        0.36,
+        4528,
+        2,
+        566,
+        243164,
+        12158284,
+        17407549,
+        18.94
+      ],
+      [
+        "Weinheim",
+        0.75,
+        0.75,
+        5121,
+        2,
+        304,
+        81358,
+        4067984,
+        5745365,
+        10.62
+      ],
+      [
+        "Weinheim",
+        2.027,
+        1.901,
+        8110,
+        6,
+        3314,
+        624608,
+        31230484,
+        45907065,
+        38.17
+      ]
+    ],
+    "eachCase": {
+      "cachedBrowserProfile": false,
+      "automaticResumes": 0,
+      "completedMandatoryOSMPackages": 2,
+      "stlResult": "passed",
+      "threeMfResult": "passed"
+    }
   },
   "browserReplayAndSavedProjects": {
-    "columns": ["city","inputType","widthKm","heightKm","printWidthMm","triangles","totalSeconds"],
-    "passed": [
-      ["Heidelberg","recorded public OSM and DEM responses",0.36,0.36,200,231422,28.76],
-      ["Berlin","recorded public OSM and DEM responses",0.36,0.36,200,92334,7.15],
-      ["Weinheim","crop of saved project",0.75,0.75,100,70678,7.78],
-      ["Weinheim","crop of saved project",1.25,1,200,251502,22.46],
-      ["Weinheim","saved project",2.027,1.901,150,611164,79.22],
-      ["Weinheim","saved project",3.2,3,200,1155732,127.84],
-      ["Weinheim","saved project",3.2,3,300,1155760,174.85]
+    "columns": [
+      "city",
+      "inputType",
+      "widthKm",
+      "heightKm",
+      "printWidthMm",
+      "triangles",
+      "totalSeconds"
     ],
-    "eachCase": {"uncaughtBrowserErrors":0,"stlResult":"passed","threeMfResult":"passed"},
-    "note":"Recorded data and live application queries need not return identical objects. Times include different machines; do not use as a performance guarantee. Private source data is not included."
+    "passed": [
+      [
+        "Heidelberg",
+        "recorded public OSM and DEM responses",
+        0.36,
+        0.36,
+        200,
+        231422,
+        28.76
+      ],
+      [
+        "Berlin",
+        "recorded public OSM and DEM responses",
+        0.36,
+        0.36,
+        200,
+        92334,
+        7.15
+      ],
+      [
+        "Weinheim",
+        "crop of saved project",
+        0.75,
+        0.75,
+        100,
+        70678,
+        7.78
+      ],
+      [
+        "Weinheim",
+        "crop of saved project",
+        1.25,
+        1,
+        200,
+        251502,
+        22.46
+      ],
+      [
+        "Weinheim",
+        "saved project",
+        2.027,
+        1.901,
+        150,
+        611164,
+        79.22
+      ],
+      [
+        "Weinheim",
+        "saved project",
+        3.2,
+        3,
+        200,
+        1155732,
+        127.84
+      ],
+      [
+        "Weinheim",
+        "saved project",
+        3.2,
+        3,
+        300,
+        1155760,
+        174.85
+      ]
+    ],
+    "eachCase": {
+      "uncaughtBrowserErrors": 0,
+      "stlResult": "passed",
+      "threeMfResult": "passed"
+    },
+    "note": "Recorded data and live application queries need not return identical objects. Times include different machines; do not use as a performance guarantee. Private source data is not included."
   },
   "negativeBrowserCases": {
-    "method":"Check on-screen phase and code, click Diagnose, parse JSON, assert identical displayMessage, stage, code and a nonempty nextStep.",
-    "passed":[["Import","IMPORT_JSON"],["Import","IMPORT_NO_DATA"],["Kartendaten","RATE_LIMIT"]],
-    "injectedRateLimit":{"http":429,"retryAfterSeconds":45,"completedMandatoryOSMPackages":0,"totalMandatoryOSMPackages":2},
-    "additionalRegressionChecks":["completed packages and elapsed time retained on deadline","failed service and layer with HTTP status","tile address and decode cause","raster size and object validation","run identity and stale map exclusion","extent input precision and 100 m minimum"]
+    "method": "Check on-screen phase and code, click Diagnose, parse JSON, assert identical displayMessage, stage, code and a nonempty nextStep.",
+    "passed": [
+      [
+        "Import",
+        "IMPORT_JSON"
+      ],
+      [
+        "Import",
+        "IMPORT_NO_DATA"
+      ],
+      [
+        "Kartendaten",
+        "RATE_LIMIT"
+      ],
+      [
+        "Import",
+        "IMPORT_HEIGHT"
+      ],
+      [
+        "Import",
+        "IMPORT_TERRAIN_GRID"
+      ],
+      [
+        "Geländedaten",
+        "TERRAIN / TILE_DECODE"
+      ]
+    ],
+    "injectedRateLimit": {
+      "http": 429,
+      "retryAfterSeconds": 45,
+      "completedMandatoryOSMPackages": 0,
+      "totalMandatoryOSMPackages": 2
+    },
+    "additionalRegressionChecks": [
+      "completed packages and elapsed time retained on deadline",
+      "failed service and layer with HTTP status",
+      "tile address and decode cause",
+      "raster size and object validation",
+      "run identity and stale map exclusion",
+      "extent input precision and 100 m minimum"
+    ],
+    "followup": "Broken input does not inherit a previous city or project in its error snapshot. Height/raster readouts show actual input values; an unreadable PNG reports the affected tile."
+  },
+  "geometryAudit": {
+    "cases": 7,
+    "closedConnectedComponentsPerCase": 1,
+    "openOrMispairedEdges": 0,
+    "degenerateTriangles": 0,
+    "note": "Rebuilt independently from the seven saved or recorded inputs; not an audit of the four separately downloaded live maps."
   }
 }

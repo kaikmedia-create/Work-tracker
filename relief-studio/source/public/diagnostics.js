@@ -11,6 +11,8 @@ function explainFailure(input,stage,settings={}){
  if(phase==='3D-Geometrie'&&Number.isFinite(settings.modelWidth))facts.push(`${settings.modelWidth} mm Druckbreite`);
  if(layer)facts.push(layer);if(d.tile)facts.push('Höhenkachel '+d.tile);
  if(d.objectId)facts.push('Objekt '+d.objectId);
+ if(code==='IMPORT_HEIGHT'&&typeof d.height==='number')facts.push('Gelieferte Höhe: '+d.height+' m');
+ if(code==='IMPORT_TERRAIN_GRID')facts.push('Gelesen: '+(d.cols??'?')+' Spalten × '+(d.rows??'?')+' Zeilen, '+(d.actualValues??'?')+' Höhenwerte');
  if(Number.isFinite(d.contactCount))facts.push(d.contactCount+' offene Kontakte');
  if(Number.isFinite(d.badEdges))facts.push(d.badEdges+' fehlerhafte Kanten');
  if(Number.isFinite(d.completedPackages)&&Number.isFinite(d.totalPackages))facts.push(`${d.completedPackages} von ${d.totalPackages} Kartenpaketen fertig`);
@@ -54,6 +56,8 @@ function createDiagnostics({now=()=>Date.now(),release='19.0.0'}={}){
  function capture(error,context={}){
   let state={};try{state=provider()||{};}catch{}
   const input=typeof error==='string'?{message:error}:error||{};
+  // On failed import the current editor state belongs to the previous project.
+  if(context.stage==='Import')state={...state,data:null,settings:null,bounds:null};
   const info=explainFailure(input,context.stage||state.stage||'Anwendung',context.settings||state.settings||{});
   const record={runId:run,operation:safeDetails(operation),nextStep:text(info.hint),facts:info.facts.map(v=>text(v,200)),id:++sequence,at:new Date(now()).toISOString(),stage:text(info.phase,100),
    name:text(input.name||'Error',80),code:text(info.code,100),message:text(input.message||String(error)),
