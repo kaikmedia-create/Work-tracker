@@ -17,26 +17,37 @@ jobs:
         with:
           ref: 14188ac7853d56c72330db1c680302c79bfcc2c1
           path: candidate
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Assemble source and compare locally verified geometry and UI checksums
+      - name: Assemble and pin tested application bytes
         run: |
           cd candidate/relief-studio/source
           node tools/prepare_release19.mjs
           cd ../../..
           python3 review/.road-review/assemble.py candidate/relief-studio
           cp review/.road-review/RELEASE-NOTES-20.md candidate/relief-studio/
-          cd candidate
-          git add -- relief-studio/
-      - name: Run full suite, physical road profile and exact encrypted gate tests
+          cd candidate && git add -- relief-studio/
+      - name: Exercise all model and release tests
+        run: cd candidate/relief-studio/source && npm test
+      - name: Publish only the verified candidate to a QA branch via GitHub Git data
+        working-directory: candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          cd candidate/relief-studio/source
-          npm test
-      - name: Push only tested files to a dedicated feature branch
-        run: |
-          cd candidate
-          git config user.name 'Relief Studio QA'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'Relief Studio 20: printable raised or engraved streets and paths with a shared watertight terrain mesh'
-          git push origin HEAD:refs/heads/feature/verified-road-relief-20
+          python3 - <<'PY'
+          import json, os, subprocess as sp
+          def git(*args): return sp.check_output(['git',*args])
+          def post(which,data):
+              return json.loads(sp.check_output(['gh','api','-X','POST',f'repos/{os.environ["GITHUB_REPOSITORY"]}/git/{which}','--input','-'],input=json.dumps(data).encode()))
+          paths=git('diff','--cached','--name-only','-z').decode().strip('\0').split('\0')
+          assert len(paths)==23 and all(p.startswith('relief-studio/') and ('/reports/' not in p) for p in paths)
+          items=[{'path':p,'mode':'100644','type':'blob','content':git('show',':'+p).decode()} for p in paths]
+          parent=git('rev-parse','HEAD').decode().strip()
+          tree=post('trees',{'base_tree':git('rev-parse','HEAD^{tree}').decode().strip(),'tree':items})['sha']
+          assert tree==git('write-tree').decode().strip()
+          commit=post('commits',{'tree':tree,'parents':[parent],'message':'Relief Studio 20: printable raised or engraved streets and paths; preserve one watertight terrain mesh'})['sha']
+          print('Verified tree:',tree,'commit:',commit,flush=True)
+          post('refs',{'ref':'refs/heads/qa/relief20-verified','sha':commit})
+          PY
