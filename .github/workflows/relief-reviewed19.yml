@@ -1,0 +1,81 @@
+name: Verify Relief Studio 19 and test live cities
+on:
+  push:
+    branches: ['qa/relief-verify19']
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+    - name: Assemble the tested candidate without altering main
+      run: |
+        set -euo pipefail
+        export STAGING="$RUNNER_TEMP/staging19"; cp -R .qa19 "$STAGING"
+        git switch --detach 6b69f8b58dceeb510f10a9935aeab5c2216b5402
+        node relief-studio/source/tools/prepare_release18.mjs
+        python "$STAGING/assemble.py"
+        cp "$STAGING/diagnose19.test.mjs" "$STAGING/diagnostic19_ui.py" "$STAGING/cities19_live.py" relief-studio/source/tests/
+        cp "$STAGING/RELEASE-NOTES-19.md" relief-studio/
+        echo '393e6498ce15c3272ea48487b3cb71cf5f86f63e17fe228a66007a22416f9b1c  relief-studio/gate-v19.js' | sha256sum -c -
+        git add --pathspec-from-file="$STAGING/selected"
+        git diff --cached --stat
+    - name: Run the full test suite; exercise visible error notifications and downloads
+      run: |
+        set -euo pipefail
+        cd relief-studio/source
+        npm test > "$RUNNER_TEMP/rs19-tests.log" || { grep -A12 '^not ok' "$RUNNER_TEMP/rs19-tests.log" | cut -c1-400; exit 1; }
+        tail -10 "$RUNNER_TEMP/rs19-tests.log"
+        python -m venv "$RUNNER_TEMP/rs19-python"
+        "$RUNNER_TEMP/rs19-python/bin/pip" -q install 'playwright==1.55.0'
+        CHROMIUM=$(command -v google-chrome) "$RUNNER_TEMP/rs19-python/bin/python" tests/diagnostic19_ui.py > "$RUNNER_TEMP/rs19-ui.json"
+        cat "$RUNNER_TEMP/rs19-ui.json"
+    - name: Publish verified candidate to its dedicated review branch only
+      run: |
+        git config user.name 'Relief Studio QA'; git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+        git commit -m 'Relief Studio 19: support precise city extents, fix collinear roof seams, add stage-aware diagnostics and regression tests'
+        git push origin HEAD:refs/heads/qa/relief19-prepared
+    - uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: verified-test-evidence
+        path: |
+          ${{ runner.temp }}/rs19-tests.log
+          ${{ runner.temp }}/rs19-ui.json
+  live:
+    runs-on: ubuntu-latest
+    needs: verify
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        ref: qa/relief19-prepared
+        persist-credentials: false
+    - uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+    - name: Use verified preview HTML and actual external services, no network fixtures
+      run: |
+        set -euo pipefail
+        cd relief-studio/source
+        node tools/prepare_release19.mjs; node --test tests/v19_gate.test.mjs
+        python -m venv "$RUNNER_TEMP/testvenv"; "$RUNNER_TEMP/testvenv/bin/pip" -q install 'playwright==1.55.0'
+        python -m http.server 8765 --bind 127.0.0.1 >/dev/null 2>&1 &
+        CHROMIUM=$(command -v google-chrome) "$RUNNER_TEMP/testvenv/bin/python" tests/cities19_live.py "$RUNNER_TEMP/live-result"
+    - uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: actual-live-city-results
+        path: ${{ runner.temp }}/live-result/live.json
+        retention-days: 7

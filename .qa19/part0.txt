@@ -1,0 +1,123 @@
+@@ source/public/app.js
+@@@ 3305 20
+ if(type==='error'){const r=
+@@@ 3386 2
+$('notice-title').textContent=r.stage+' · '+r.code;$('notice-message').textContent=r.displayMessage;}
+
+@@@ 26035 27
+if(e.data.progress){pending?.progress(e.data.progress);return;}modelResolvers.delete(id);
+
+@@@ 26660 2
+)return false;
+ if(
+@@@ 26693 14
+{notify('Für das 3D-Modell fehlen Höhenwerte.','error',null,Object.assign(Error('Das gespeicherte Poster enthält kein Gelände. Den Ausschnitt im 3D-Modus laden.'),{code:'MODEL_NO_TERRAIN'}),{stage:'Geländedaten'});return false;}
+
+@@@ 27186 9
+   let timer,lastStep='Start';const maxMs=360000,idleMs=120000;
+   function arm(){clearTimeout(timer);
+@@@ 27294 60
+elapsed=Date.now()-startedAt,hard=elapsed>=maxMs-10;
+    const e=Object.assign(Error((hard?'Gesamtzeit von 360 s erreicht.':'Seit 120 s kein neuer Rechenschritt.')+' Letzter Schritt: '+lastStep+'
+@@@ 27391 27
+,{code:'MODEL_TIMEOUT',diagnostics:{elapsedMs:elapsed,limitMs:hard?maxMs:idleMs,reason:hard?'total':'idle',lastStep,buildId:id,buildings:source.buildings.length}})
+@@@ 27472 42
+e);modelResolvers.clear();},Math.max(0,Math.min(idleMs,maxMs-(Date.now()-startedAt))));}arm(
+@@@ 27543 0
+progress:p=>{lastStep=p.step;arm();R.diagnostics.event('3D-Geometrie',{status:'progress',buildId:id,phase:p.step,done:p.done,total:p.total,attempt:p.pass});if(abort)$('loader-detail').textContent=p.step+' · Durchlauf '+p.pass;},
+@@@ 37822 0
+R.diagnostics.begin('Ausschnitt',{bounds:bounds.slice()});
+@@@ 37853 0
+,{stage:'Ausschnitt',data:null}
+@@@ 37989 41
+begin('Kartendaten',{city:settings.title,bounds:bounds.slice(),widthKm:settings.widthKm,heightKm:settings.heightKm});
+
+@@@ 40233 127
+e.message
+@@@ 40469 5
+,data:data&&data.bounds.every((v,i)=>Math.abs(v-bounds[i])<1e-7)?data:null});}
+
+@@@ 42384 0
+,{stage:'Export '+String(settings.format).toUpperCase()}
+@@@ 42489 2
+19
+@@@ 43581 0
+R.diagnostics.begin('Export '+type.toUpperCase(),{format:type,city:settings.title});
+@@@ 43797 0
+);R.diagnostics.event('Export',{status:'download-angefordert',format:type,bytes:blob.size}
+@@@ 44134 0
+,{stage:'Export '+type.toUpperCase()}
+@@@ 49302 0
+{
+@@@ 49357 4
+notify(e.message,'error',null,e,{stage:'Ortssuche'});}}};
+
+@@@ 53956 0
+R.diagnostics.begin('Import',{bytes:f.size});
+@@@ 54035 46
+raw=JSON.parse(await f.text());if(raw?.diagnostics&&!raw.data)throw Object.assign(Error('Diese Diagnose enthält nur das Fehlerprotokoll, keine ladbaren Kartendaten.'),{code:'IMPORT_NO_DATA'});const p=R.validateProject(raw
+@@@ 58864 12
+19.0.0'}});
+
+@@ source/public/architecture.js
+@@@ 8023 91
+ // The sector triangles have disjoint interiors. Clipping a footprint against each
+ // triangle independently avoids repeatedly subdividing fragments outside the dome.
+ const outer=tidy(Array.from({length:sectors},(_,k)=>at(1,k*Math.PI*2/sectors).slice(0,2)));
+ const tiles=patches.map(triangle=>{const poly
+@@@ 8151 246
+return {poly,box:bbox(poly),plane:planeFrom3(...triangle)};}).filter(t=>t.poly.length);
+ for(const poly of pieces){const bb=bbox(poly),border=splitBy(poly,outer);
+  if(!border.inside.length){out.push(make(poly,[0,0,z0]));continue;}
+  for(const p of border.outside
+@@@ 8425 1
+
+  for(const tile of tiles)if(intersects(bb,tile.box)){const hit=splitBy(poly,tile.poly).inside;if(hit.length)out.push(make(hit,tile.plane));}
+
+@@@ 8921 5
+  const points=
+@@@ 8961 113
+;if(points>5000)throw Object.assign(Error(`Der Grundriss hat ${points} Punkte; zulässig sind 5.000.`),{code:'FOOTPRINT_LIMIT',diagnostics:{objectId:b.id,points,limit:5000}});
+
+@@@ 9235 28
+  let pieces;try{pieces=decompose(rings);}catch(e){e.code='FOOTPRINT_INVALID';e.diagnostics={objectId:b.id,points};throw e;}
+  let polys=pieces
+@@@ 9641 0
+{if(!
+@@@ 9673 34
+)return [p];const cut=splitBy(p,cutter);return cut.inside.length?cut.outside:[p];});}
+
+@@@ 19087 0
+ // A long edge and a reversed chain of shorter collinear edges are the SAME
+ // planar boundary even when their line-group keys rounded differently. Reuse
+ // existing vertices only; require the entire opposite chain to exist first.
+ const ek=(a,b)=>a<b?a+','+b:b+','+a;
+ const singles=[...edges.values()].filter(es=>es.length===1&&!atBorder(xy[es[0].a],xy[es[0].b])).map(es=>es[0]);
+ stats.chainSplits=0;
+ if(singles.length<=2048){
+  const ids=[...new Set(singles.flatMap(e=>[e.a,e.b]))];
+  for(const e of singles){const key=ek(e.a,e.b);if(edges.get(key)?.length!==1)continue;
+   const a=xy[e.a],b=xy[e.b],dx=b[0]-a[0],dy=b[1]-a[1],l2=dx*dx+dy*dy;if(l2<1e-18)continue;
+   const pts=[];for(const id of ids){if(id===e.a||id===e.b)continue;const p=xy[id],x=p[0]-a[0],y=p[1]-a[1],t=(x*dx+y*dy)/l2;
+    if(t>0&&t<1&&Math.abs(dx*y-dy*x)<=1e-7*Math.sqrt(l2))pts.push([t,id]);}
+   if(!pts.length)continue;pts.sort((a,b)=>a[0]-b[0]);const path=[e.a,...pts.map(p=>p[1]),e.b];
+   if(!path.slice(1).every((v,i)=>{const use=edges.get(ek(path[i],v));return use?.length===1&&use[0].a===v&&use[0].b===path[i]&&use[0].f!==e.f;}))continue;
+   const f=faces[e.f],idx=f.boundaryIds.findIndex((v,i,ar)=>v===e.a&&ar[(i+1)%ar.length]===e.b);if(idx<0)continue;
+   f.boundaryIds.splice(idx+1,0,...path.slice(1,-1));edges.delete(key);
+   for(const id of path.slice(1,-1))xyZ[id].push(evalZ(f.plane,xy[id]));
+   for(let i=1;i<path.length;i++)edges.get(ek(path[i-1],path[i])).push({a:path[i-1],b:path[i],f:e.f});stats.chainSplits++;
+  }
+ }
+
+@@@ 25361 0
+ const tick=(step,done,total)=>R.meshProgress?.({step,done,total,pass:attempt+1});tick('Geländeraster',0,1);
+
+@@@ 25976 1
+ tick('Dachflächen',0,data.buildings.length);
+@@@ 27470 0
+  if(i%24576===0)tick('Flächen verbinden',i/3,topCount/3);
+
+@@@ 28123 1
+ tick('Kanten verbinden',0,faces.length);
+@@@ 28838 1
+ tick('Geschlossenen Körper prüfen',0,result.indices.length/3);

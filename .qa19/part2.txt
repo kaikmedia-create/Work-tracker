@@ -1,0 +1,150 @@
+@@ source/tests/v12_gate.test.mjs
+@@@ 597 11
+v19.js?v=19
+@@ source/tests/v13_gate.test.mjs
+@@@ 1327 18
+v19\.js\?v=19/));
+
+@@ source/tests/v14_gate.test.mjs
+@@@ 1511 17
+v19.js?v=19')));
+
+@@ source/tests/v15_gate.test.mjs
+@@@ 1744 17
+v19.js?v=19')));
+
+@@@ 2700 2
+  else if(key==='public/core.js')assert.equal(createHash('sha256').update(r.files()[key]).digest('hex'),'714dca6989540620530dd83e46e2a890496845fad499eff717bb8f238d5791a0',name);else if(key==='public/worker.js')assert.equal(createHash('sha256').update(r.files()[key]).digest('hex'),'d94442ddb4e08b23f8f9a62965be3b53d8801ab023aaf9a738dfa9623672b4e2',name);
+@@ source/tests/v16_gate.test.mjs
+@@@ 1678 20
+v19\.js\?v=19/);});
+
+@@@ 2608 0
+if(key==='public/worker.js')assert.equal(createHash('sha256').update(x.files()[key]).digest('hex'),'d94442ddb4e08b23f8f9a62965be3b53d8801ab023aaf9a738dfa9623672b4e2',name);else 
+@@ source/tests/v17_gate.test.mjs
+@@@ 1991 18
+v19\.js\?v=19/));
+
+@@@ 2550 2
+  else if(key==='public/data.js')assert.equal(createHash('sha256').update(x.files()[key]).digest('hex'),'6a8dfbf23828551b090f611b820e7f29bff40ff29ea7abe10629068f36583ab3',name);else if(key==='public/core.js')assert.equal(createHash('sha256').update(x.files()[key]).digest('hex'),'714dca6989540620530dd83e46e2a890496845fad499eff717bb8f238d5791a0',name);else if(key==='public/worker.js')assert.equal(createHash('sha256').update(x.files()[key]).digest('hex'),'d94442ddb4e08b23f8f9a62965be3b53d8801ab023aaf9a738dfa9623672b4e2',name);
+@@ source/tests/v18_gate.test.mjs
+@@@ 214 0
+createHash,
+@@@ 1988 18
+v19\.js\?v=19/));
+
+@@@ 2176 1
+ const previous=JSON.parse(await readFile(join(site,'upgrade19.json'),'utf8')).changes;
+ 
+@@@ 2298 37
+{const key='public/'+name;if(previous[key])assert.equal(createHash('sha256').update(x.files()[key]).digest('hex'),previous[key].base,name);else assert.equal(x.files()[key
+@@@ 2391 1
+}
+
+@@ gate-v19.js
+@@@ 0 20
+/* Relief Studio v19
+@@@ 475 2
+19
+@@@ 1585 21
+19 wird geöffnet …';
+
+@@@ 2190 2
+  const baseBytes=await combine(m.parts);
+@@@ 2286 22
+baseBytes
+@@@ 11305 0
+   const p19=await (await get('upgrade19.json')).json(),names19=["public/app.js", "public/architecture.js", "public/core.js", "public/data.js", "public/diagnostics.js", "public/index.html", "public/worker.js"];
+   if(p19.version!==19||Object.keys(p19.changes||{}).length!==names19.length)throw Error('Diagnose-Update unvollständig.');
+   for(const name of names19){const c=p19.changes[name];if(!c||!Array.isArray(c.edits)||await hash(files[name])!==c.base)throw Error('Quellstand für Version 19 stimmt nicht: '+name);
+    const lines=files[name].split('\n');for(const [i,n,add] of c.edits.slice().reverse())lines.splice(i,n,...add);const v=lines.join('\n');if(await hash(v)!==c.result)throw Error('Prüfsumme stimmt nicht: '+name);files[name]=v;}
+   pack.version=19;
+
+@@@ 12604 2
+19
+@@ index.html
+@@@ 2154 2
+19
+@@@ 3641 37
+v19.js?v=19"></script></body></html>
+
+@@ source/package.json
+@@@ 29 23
+  "version": "19.0.0",
+
+@@@ 279 24
+    "test": "node --test --test-concurrency=1
+@@@ 951 3
+ tests/v19_gate.test.mjs tests/diagnose19.test.mjs",
+
+@@@ 1605 17
+prepare_release19
+@@@ 1656 17
+prepare_release19
+@@@ 1710 17
+prepare_release19
+@@@ 1768 17
+prepare_release19
+@@@ 1832 17
+prepare_release19
+@@@ 1892 17
+prepare_release19
+@@@ 1959 24
+prepare_release19.mjs",
+
+@@@ 2076 24
+prepare_release19.mjs",
+
+@@@ 2200 17
+prepare_release19
+@@@ 2258 24
+prepare_release19.mjs",
+
+@@@ 2376 23
+prepare_release19.mjs"
+
+@@ source/tools/prepare_release19.mjs
+@@@ 37 2
+19
+@@@ 444 31
+for(const version of [17,18,19]){
+
+@@@ 621 1
+(version===19?7:4)
+@@@ 897 0
+|core|worker
+@@@ 963 0
+|18
+@@@ 1954 9
+release19
+@@@ 2104 2
+19
+@@ source/tests/v19_gate.test.mjs
+@@@ 387 18
+v19.js'),'utf8');
+
+@@@ 1186 9
+upgrade19
+@@@ 1871 35
+test('v19 published entry loads v19
+@@@ 1988 27
+v19\.js\?v=19/));
+test('v19
+@@@ 2436 2
+19
+@@@ 2496 2
+19
+@@@ 2863 3
+v19
+@@@ 2922 3
+v19
+@@@ 2962 9
+test('v19
+@@@ 3217 3
+v19
+@@@ 3441 3
+v19
+@@@ 3815 3
+v19
+@@@ 4038 3
+v19

@@ -1,0 +1,115 @@
+@@ source/public/core.js
+@@@ 1409 22
+ if(d.w<99.999999||d.h<99.999999)throw Object.assign(Error(`Ausschnitt zu klein: ${Math.round(d.w)} × ${Math.round(d.h)} m; mindestens 100 m je Seite.`),{code:'AREA_TOO_SMALL',diagnostics:{widthM:d.w,heightM:d.h,minimumM:100}});
+ if(
+@@@ 25894 14
+ if(!d.terrain||!Number.isInteger(d.terrain.cols)||!Number.isInteger(d.terrain.rows)
+@@@ 26152 0
+Object.assign(
+@@@ 26182 4
+ Erwartet: ganze Spalten- und Zeilenzahl (2–1025) und genau ein gültiger Höhenwert pro Rasterpunkt.'),{code:'IMPORT_TERRAIN_GRID',diagnostics:{cols:d.terrain?.cols,rows:d.terrain?.rows,actualValues:d.terrain?.values?.length}});
+
+@@@ 27167 0
+Object.assign(
+@@@ 27196 4
+ Erwartet: mehr als 0 und höchstens 1000 m.'),{code:'IMPORT_HEIGHT',diagnostics:{objectId:String(b.id||'unbekannt'),height:b.height}});
+
+@@ source/public/data.js
+@@@ 15726 15
+    const attemptStart=Date.now();emit({phase,layer,service
+@@@ 16585 0
+;emit({phase,layer,service,status:'response-complete',attempt:i+1,durationMs:Date.now()-attemptStart,count:value.elements.length})
+@@@ 16676 0
+const durationMs=Date.now()-attemptStart;
+@@@ 16743 4
+,durationMs});emit({phase,layer,service,status:'attempt-failed',code:e.code,attempt:i+1,attempts,httpStatus:e.status,durationMs});
+
+@@@ 20319 0
+...e.diagnostics,
+@@@ 20364 5
+,completedPackages:ctx.done,totalPackages:ctx.total}});
+
+@@@ 23100 0
+,diagnostics:{completedPackages:ctx.done,totalPackages:ctx.total,elapsedMs:Date.now()-started,requests:ctx.requests}
+@@@ 27262 0
+const tile=`${z}/${x}/${y}`,service=R.server?'Studio-Server':'s3.amazonaws.com';let rgba;
+  try{
+   
+@@@ 27324 10
+
+   async function pixels(bytes){
+    const image=typeof createImageBitmap==='function'?await createImageBitmap(bytes):await new Promise((resolve,reject)=>{const im=new Image(),u=URL.createObjectURL(bytes);im.onload=()=>{URL.revokeObjectURL(u);resolve(im);};im.onerror=()=>{URL.revokeObjectURL(u);reject(Error('PNG nicht lesbar.'));};im.src=u;});
+    try{if(image.width!==256||image.height!==256)throw Error('Erwartet: 256 × 256 Pixel.');const canvas=document.createElement('canvas');canvas.width=canvas.height=256;const ctx=canvas.getContext('2d',{willReadFrequently:true});ctx.drawImage(image,0,0);return ctx.getImageData(0,0,256,256).data;}finally{image.close?.();}
+   }
+   if(blob)try{rgba=await pixels(blob);}catch{send(onProgress,{phase:'terrain',status:'cache-invalid',tile,detail:'Gespeicherte Höhenkachel nicht lesbar. Sie wird neu geladen.'});}
+   if(!rgba)
+@@@ 27529 40
+
+    try{rgba=await pixels(blob);}catch{throw error('TILE_DECODE','Höhenkachel nicht als 256 × 256-Pixel-PNG lesbar.');}
+    check(signal);await cache?.set(tileKey,blob,7*24*3600000);break;
+   }catch(e){check(signal);send(onProgress,{phase:'terrain',status:'attempt-failed',tile,service,attempt:attempt+1,code:e.code,httpStatus:e.status});if(
+@@@ 27654 627
+check(signal);
+  }catch(e){e.diagnostics={...e.diagnostics,tile,service,completedTiles:done,totalTiles:jobs.length};throw e;}
+  
+@@ source/public/diagnostics.js
+@@@ 111 0
+function explainFailure(input,stage,settings={}){
+ const d=input.diagnostics||input.details||{}, attempts=d.attemptedProviders||[], last=attempts.at(-1)||{};
+ const code=input.code||(stage==='Import'?(input.name==='SyntaxError'?'IMPORT_JSON':'IMPORT_INVALID'):'APP_ERROR');
+ const phase=code==='TERRAIN'?'Geländedaten':stage, layer=({geometry:'Gebäude und Linien',relations:'zusammengesetzte Flächen',pois:'Zusatzmarker'})[d.layer];
+ const facts=[];
+ if(settings.title)facts.push(String(settings.title).slice(0,100));
+ if(Number.isFinite(settings.widthKm)&&Number.isFinite(settings.heightKm))facts.push(`${settings.widthKm} × ${settings.heightKm} km`);
+ if(phase==='3D-Geometrie'&&Number.isFinite(settings.modelWidth))facts.push(`${settings.modelWidth} mm Druckbreite`);
+ if(layer)facts.push(layer);if(d.tile)facts.push('Höhenkachel '+d.tile);
+ if(d.objectId)facts.push('Objekt '+d.objectId);
+ if(Number.isFinite(d.contactCount))facts.push(d.contactCount+' offene Kontakte');
+ if(Number.isFinite(d.badEdges))facts.push(d.badEdges+' fehlerhafte Kanten');
+ if(Number.isFinite(d.completedPackages)&&Number.isFinite(d.totalPackages))facts.push(`${d.completedPackages} von ${d.totalPackages} Kartenpaketen fertig`);
+ if(last.service||d.service)facts.push('Dienst: '+(last.service||d.service));
+ if(last.status||d.status||input.status)facts.push('HTTP '+(last.status||d.status||input.status));
+ const wait=Number.isFinite(input.retryAt)?Math.max(0,Math.ceil((input.retryAt-Date.now())/1000)):null;
+ const hint=code==='RATE_LIMIT'?(wait===null?'Die angezeigte Sperrfrist abwarten.':`Nach ${wait} s erneut versuchen.`):code==='IMPORT_JSON'?'Eine unveränderte Projekt- oder Diagnose-JSON öffnen.':code==='IMPORT_NO_DATA'?'Eine Projektdatei mit Kartendaten öffnen oder den Ausschnitt neu laden.':phase==='3D-Geometrie'?'Die vorhandenen Kartendaten müssen nicht neu geladen werden. Diagnose speichern.':phase==='Geländedaten'?'Erneut versuchen; fertige Kartenpakete bleiben nutzbar.':phase==='Kartendaten'?'Erneut versuchen; vollständig geladene Pakete werden wiederverwendet.':phase==='Import'?'Dateiformat und betroffenen Wert prüfen.':phase.startsWith('Export')?'Projekt sichern und Diagnose herunterladen.':'Details über „Diagnose“ speichern.';
+ return {phase,code,hint,facts};
+}
+
+@@@ 167 2
+19
+@@@ 252 2
+,run=0;let operation=null;
+
+@@@ 588 15
+  const entry={runId:run,
+@@@ 809 4
+,'service','httpStatus','tile','format','bytes','objectId']){
+
+@@@ 2088 16
+  const info=explainFailure(input,context.stage||state.stage||'Anwendung',context.settings||state.settings||{});
+  const record={runId:run,operation:safeDetails(operation),nextStep:text(info.hint),facts:info.facts.map(v=>text(v,200)),
+@@@ 2162 39
+info.phase
+@@@ 2255 23
+info.code
+@@@ 2488 38
+originalNotice=text(context.message);
+  record.displayMessage=text([record.code==='IMPORT_JSON'?'Datei enthält kein gültiges JSON.':record.message,record.facts.join(' · '),record.nextStep].filter(Boolean).join(' — '),3000);
+
+@@@ 4659 9
+ return {begin(stage,meta={}){run++;operation={stage:text(stage,100),startedAt:new Date(now()).toISOString(),...safeDetails(meta)};event(stage,{status:'started'});return run;},
+@@ source/public/worker.js
+@@@ 115 0
+RS.meshProgress=progress=>self.postMessage({id,progress});
+@@@ 385 3
+finally{delete RS.meshProgress;}};
+
+@@ source/public/index.html
+@@@ 1000 16
+19</span></div>
+
+@@@ 5087 1
+001
+@@@ 5226 1
+001
+@@@ 29140 2
+19
