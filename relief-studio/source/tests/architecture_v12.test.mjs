@@ -38,7 +38,7 @@ test('Roof direction denotes slope, not ridge direction',()=>{
  const f=R.architecture.roofFrame(rect(-5,-10,10,20),{'roof:direction':'E'});assert.ok(Math.abs(f.u[0]-1)<1e-8);assert.ok(Math.abs(f.u[1])<1e-8);
 });
 test('Unknown roof is not invented, unsupported shapes are counted',()=>{
- const d=scene();d.buildings=[building('unknown',[rect(.2,.2,.4,.4)],{building:'church',height:'20','roof:shape':'onion'})];const m=R.buildMesh(d,settings);solid(m);assert.equal(m.architecture.unsupportedRoofs,1);assert.equal(m.architecture.roofTagged,0);
+ const d=scene();d.buildings=[building('unknown',[rect(.2,.2,.4,.4)],{building:'church',height:'20','roof:shape':'unsupported-test-value'})];const m=R.buildMesh(d,settings);solid(m);assert.equal(m.architecture.unsupportedRoofs,1);assert.equal(m.architecture.roofTagged,0);
 });
 test('Explicit total height includes roof rather than adding it twice',()=>{
  const d=scene();d.buildings=[building('gable',[rect(.2,.2,.4,.4)],{height:'24','roof:shape':'gabled','roof:height':'7'})];const m=R.buildMesh(d,settings);assert.ok(Math.abs(m.zmax-(3+24*200/600))<.001);

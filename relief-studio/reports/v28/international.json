@@ -1,0 +1,373 @@
+{
+  "data": "Real OSM map API and Overture Oct 2026 tile, small urban samples. Flat test terrain. Diagnostics use mapped OSM geometries; Overture tile matches counted separately.",
+  "cities": {
+    "mumbai": {
+      "bounds": [
+        72.83375,
+        18.92105,
+        72.83565,
+        18.92295
+      ],
+      "objects": 36,
+      "shapes": {
+        "flat": 5,
+        "dome": 2,
+        "onion": 4
+      },
+      "overtureMatched": 28,
+      "missingTagCandidates": {},
+      "architecture": {
+        "referenceModels": 0,
+        "referenceFaces": 0,
+        "plainFootprints": 25,
+        "buildings": 36,
+        "roofTagged": 6,
+        "roofEstimated": 4,
+        "heightEstimated": 1,
+        "unsupportedRoofs": 0,
+        "walls": 0,
+        "minHeightFilled": 2,
+        "omitted": 0,
+        "parts": 36,
+        "contextRoofs": 0,
+        "underground": 0,
+        "measuredRoofs": 0,
+        "roofSources": [],
+        "repairLimit": 128,
+        "contactRepairs": 0,
+        "repairPasses": 0,
+        "xySeamWelds": 0,
+        "maxXYSeamShift": 0,
+        "chainSplits": 0,
+        "zeroAreaRetriangulations": 0,
+        "verticalSeamSplits": 0
+      },
+      "geometry": {
+        "triangles": 60380,
+        "vertices": 30192,
+        "badEdges": 0,
+        "components": 1,
+        "volume": 48907.95356683335,
+        "degenerate": 0
+      },
+      "ok": true
+    },
+    "sydney": {
+      "bounds": [
+        151.21435,
+        -33.85815,
+        151.21625,
+        -33.85625
+      ],
+      "objects": 99,
+      "shapes": {
+        "many": 1,
+        "round": 42,
+        "circular": 10,
+        "spherical": 34,
+        "flat": 5,
+        "skillion": 2
+      },
+      "overtureMatched": 10,
+      "missingTagCandidates": {},
+      "architecture": {
+        "referenceModels": 0,
+        "referenceFaces": 0,
+        "plainFootprints": 5,
+        "buildings": 99,
+        "roofTagged": 78,
+        "roofEstimated": 78,
+        "heightEstimated": 99,
+        "unsupportedRoofs": 11,
+        "walls": 5,
+        "minHeightFilled": 0,
+        "omitted": 0,
+        "parts": 90,
+        "contextRoofs": 0,
+        "underground": 0,
+        "measuredRoofs": 0,
+        "roofSources": [],
+        "repairLimit": 198,
+        "contactRepairs": 16,
+        "repairPasses": 1,
+        "xySeamWelds": 0,
+        "maxXYSeamShift": 0,
+        "chainSplits": 0,
+        "zeroAreaRetriangulations": 1,
+        "verticalSeamSplits": 0
+      },
+      "geometry": {
+        "triangles": 192698,
+        "vertices": 96351,
+        "badEdges": 0,
+        "components": 1,
+        "volume": 113282.17761925414,
+        "degenerate": 0
+      },
+      "ok": true
+    },
+    "nyc": {
+      "bounds": [
+        -73.9866,
+        40.7475,
+        -73.9847,
+        40.7494
+      ],
+      "objects": 48,
+      "shapes": {
+        "flat": 14,
+        "pyramidal": 2
+      },
+      "overtureMatched": 46,
+      "missingTagCandidates": {},
+      "architecture": {
+        "referenceModels": 0,
+        "referenceFaces": 0,
+        "plainFootprints": 29,
+        "buildings": 47,
+        "roofTagged": 2,
+        "roofEstimated": 0,
+        "heightEstimated": 2,
+        "unsupportedRoofs": 0,
+        "walls": 0,
+        "minHeightFilled": 12,
+        "omitted": 0,
+        "parts": 21,
+        "contextRoofs": 0,
+        "underground": 0,
+        "measuredRoofs": 0,
+        "roofSources": [],
+        "repairLimit": 128,
+        "contactRepairs": 0,
+        "repairPasses": 0,
+        "xySeamWelds": 0,
+        "maxXYSeamShift": 0,
+        "chainSplits": 0,
+        "zeroAreaRetriangulations": 0,
+        "verticalSeamSplits": 0
+      },
+      "geometry": {
+        "triangles": 66328,
+        "vertices": 33166,
+        "badEdges": 0,
+        "components": 1,
+        "volume": 668331.1253883634,
+        "degenerate": 0
+      },
+      "ok": true
+    },
+    "amsterdam": {
+      "bounds": [
+        4.88985,
+        52.37215,
+        4.89175,
+        52.37405
+      ],
+      "objects": 75,
+      "shapes": {
+        "flat": 1,
+        "gabled": 12,
+        "hipped": 4,
+        "dome": 1,
+        "skillion": 4,
+        "pyramidal": 6
+      },
+      "overtureMatched": 69,
+      "missingTagCandidates": {},
+      "architecture": {
+        "referenceModels": 0,
+        "referenceFaces": 0,
+        "plainFootprints": 45,
+        "buildings": 75,
+        "roofTagged": 27,
+        "roofEstimated": 2,
+        "heightEstimated": 8,
+        "unsupportedRoofs": 0,
+        "walls": 0,
+        "minHeightFilled": 2,
+        "omitted": 0,
+        "parts": 38,
+        "contextRoofs": 0,
+        "underground": 0,
+        "measuredRoofs": 0,
+        "roofSources": [],
+        "repairLimit": 150,
+        "contactRepairs": 6,
+        "repairPasses": 1,
+        "xySeamWelds": 0,
+        "maxXYSeamShift": 0,
+        "chainSplits": 0,
+        "zeroAreaRetriangulations": 5,
+        "verticalSeamSplits": 0
+      },
+      "geometry": {
+        "triangles": 112626,
+        "vertices": 56315,
+        "badEdges": 0,
+        "components": 1,
+        "volume": 307448.4403751265,
+        "degenerate": 0
+      },
+      "ok": true
+    },
+    "istanbul": {
+      "bounds": [
+        28.97915,
+        41.00765,
+        28.98105,
+        41.00955
+      ],
+      "objects": 164,
+      "shapes": {
+        "flat": 91,
+        "dome": 9,
+        "hipped": 1,
+        "pyramidal": 7,
+        "skillion": 2
+      },
+      "overtureMatched": 47,
+      "missingTagCandidates": {},
+      "architecture": {
+        "referenceModels": 0,
+        "referenceFaces": 0,
+        "plainFootprints": 50,
+        "buildings": 159,
+        "roofTagged": 19,
+        "roofEstimated": 2,
+        "heightEstimated": 60,
+        "unsupportedRoofs": 0,
+        "walls": 86,
+        "minHeightFilled": 70,
+        "omitted": 0,
+        "parts": 123,
+        "contextRoofs": 0,
+        "underground": 0,
+        "measuredRoofs": 0,
+        "roofSources": [],
+        "repairLimit": 318,
+        "contactRepairs": 3,
+        "repairPasses": 1,
+        "xySeamWelds": 5,
+        "maxXYSeamShift": 0.000002601936816094207,
+        "chainSplits": 0,
+        "zeroAreaRetriangulations": 1,
+        "verticalSeamSplits": 0
+      },
+      "geometry": {
+        "triangles": 114068,
+        "vertices": 57036,
+        "badEdges": 0,
+        "components": 1,
+        "volume": 205934.29443927776,
+        "degenerate": 0
+      },
+      "ok": true
+    },
+    "tokyo": {
+      "bounds": [
+        139.79575,
+        35.71385,
+        139.79765,
+        35.71575
+      ],
+      "objects": 65,
+      "shapes": {
+        "pyramidal": 1,
+        "flat": 9
+      },
+      "overtureMatched": 4,
+      "missingTagCandidates": {},
+      "architecture": {
+        "referenceModels": 0,
+        "referenceFaces": 0,
+        "plainFootprints": 55,
+        "buildings": 65,
+        "roofTagged": 1,
+        "roofEstimated": 1,
+        "heightEstimated": 62,
+        "unsupportedRoofs": 0,
+        "walls": 9,
+        "minHeightFilled": 0,
+        "omitted": 0,
+        "parts": 0,
+        "contextRoofs": 0,
+        "underground": 0,
+        "measuredRoofs": 0,
+        "roofSources": [],
+        "repairLimit": 130,
+        "contactRepairs": 3,
+        "repairPasses": 1,
+        "xySeamWelds": 0,
+        "maxXYSeamShift": 0,
+        "chainSplits": 0,
+        "zeroAreaRetriangulations": 2,
+        "verticalSeamSplits": 0
+      },
+      "geometry": {
+        "triangles": 43454,
+        "vertices": 21729,
+        "badEdges": 0,
+        "components": 1,
+        "volume": 104491.5503856728,
+        "degenerate": 0
+      },
+      "ok": true
+    },
+    "moscow": {
+      "bounds": [
+        37.62175,
+        55.75155,
+        37.62365,
+        55.75345
+      ],
+      "objects": 553,
+      "shapes": {
+        "pyramidal": 44,
+        "hipped": 6,
+        "skillion": 9,
+        "flat": 8,
+        "round": 112,
+        "gabled": 31
+      },
+      "overtureMatched": 457,
+      "missingTagCandidates": {
+        "building:levels": 2
+      },
+      "architecture": {
+        "referenceModels": 0,
+        "referenceFaces": 0,
+        "plainFootprints": 340,
+        "buildings": 550,
+        "roofTagged": 202,
+        "roofEstimated": 0,
+        "heightEstimated": 0,
+        "unsupportedRoofs": 0,
+        "walls": 4,
+        "minHeightFilled": 504,
+        "omitted": 0,
+        "parts": 546,
+        "contextRoofs": 0,
+        "underground": 0,
+        "measuredRoofs": 0,
+        "roofSources": [],
+        "repairLimit": 1100,
+        "contactRepairs": 2,
+        "repairPasses": 1,
+        "xySeamWelds": 0,
+        "maxXYSeamShift": 0,
+        "chainSplits": 0,
+        "zeroAreaRetriangulations": 1,
+        "verticalSeamSplits": 0
+      },
+      "geometry": {
+        "triangles": 180404,
+        "vertices": 90204,
+        "badEdges": 0,
+        "components": 1,
+        "volume": 107126.9952298515,
+        "degenerate": 0
+      },
+      "ok": true
+    }
+  }
+}

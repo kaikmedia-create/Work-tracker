@@ -67,7 +67,7 @@ function metres(v){
 }
 function roofSpec(b,scale){
  const t=b.tags||{},shape=String(t['roof:shape']||t['building:roof:shape']||'flat').toLowerCase();
- const shapes=['flat','gabled','hipped','pyramidal','skillion','dome','cone','round','gambrel','mansard'];
+ const shapes=['onion','spherical','half-hipped','saltbox','flat','gabled','hipped','pyramidal','skillion','dome','cone','round','gambrel','mansard'];
  let total=metres(t.height),source=b.heightSource==='Manuell'?'Manuell':'OSM-Höhe',roof=metres(t['roof:height']);
  if(!(total>0)){total=Number(b.height);source=b.heightSource||'Schätzwert';}
  if(!(total>0))total=9;
@@ -116,7 +116,13 @@ function roofPieces(pieces,frame,spec,foot,scale){
  const linear=(dir,slope,off)=>[dir[0]*slope,dir[1]*slope,z0+off];
  if(spec.shape==='skillion')return pieces.map(p=>make(p,linear(u,-rh/du,rh+rh*umin/du)));
  // Concave roof surfaces can be represented as a lower envelope of planes.
- const planes=[linear(u,2*rh/du,-2*rh*umin/du),linear(u,-2*rh/du,2*rh*umax/du)];
+ // A saltbox has an offset ridge. With mapped slope direction the longer face drains toward +u.
+ const left=du*(spec.shape==='saltbox'?.34:.5),right=du-left;
+ const planes=[linear(u,rh/left,-rh*umin/left),linear(u,-rh/right,rh*umax/right)];
+ if(spec.shape==='half-hipped'){
+  const slope=rh/Math.max(EPS,Math.min(du,dv)*.5),lift=rh*.48;
+  planes.push(linear(v,slope,lift-slope*vmin),linear(v,-slope,lift+slope*vmax));
+ }
  if(spec.shape==='hipped'||spec.shape==='pyramidal'){
   const run=spec.shape==='hipped'?Math.min(du,dv)/2:dv/2;
   planes.push(linear(v,rh/run,-rh*vmin/run),linear(v,-rh/run,rh*vmax/run));
@@ -129,7 +135,7 @@ function roofPieces(pieces,frame,spec,foot,scale){
    planes.push(linear(dir,a,b-a*lo),linear(dir,-a,b+a*hi));
   }};section(u,umin,umax,du/2);if(spec.shape==='mansard')section(v,vmin,vmax,Math.min(du,dv)/2);
  }
- if(['gabled','hipped','pyramidal','round','gambrel','mansard'].includes(spec.shape)){
+ if(['gabled','half-hipped','saltbox','hipped','pyramidal','round','gambrel','mansard'].includes(spec.shape)){
   const out=[];
   for(const poly of pieces)for(let i=0;i<planes.length;i++){
    let p=poly;for(let j=0;j<planes.length&&p.length;j++)if(i!==j)p=half(p,planes[j].map((z,k)=>z-planes[i][k]));
@@ -138,8 +144,8 @@ function roofPieces(pieces,frame,spec,foot,scale){
  }
  // Explicit cone/dome tags: polygonal meridians, clipped to the actual footprint.
  // Do NOT treat generic towers/churches/castles as cones.
- const cu=(umin+umax)/2,cv=(vmin+vmax)/2,center=[u[0]*cu+v[0]*cv,u[1]*cu+v[1]*cv],sectors=24,rings=spec.shape==='dome'?6:1,out=[];
- const at=(r,a)=>[center[0]+u[0]*du/2*r*Math.cos(a)+v[0]*dv/2*r*Math.sin(a),center[1]+u[1]*du/2*r*Math.cos(a)+v[1]*dv/2*r*Math.sin(a),z0+rh*(spec.shape==='dome'?Math.sqrt(Math.max(0,1-r*r)):1-r)];
+ const cu=(umin+umax)/2,cv=(vmin+vmax)/2,center=[u[0]*cu+v[0]*cv,u[1]*cu+v[1]*cv],sectors=24,rings=spec.shape==='onion'?8:['dome','spherical'].includes(spec.shape)?6:1,out=[];
+ const at=(r,a)=>[center[0]+u[0]*du/2*r*Math.cos(a)+v[0]*dv/2*r*Math.sin(a),center[1]+u[1]*du/2*r*Math.cos(a)+v[1]*dv/2*r*Math.sin(a),z0+rh*(spec.shape==='onion'?[1,.69,.58,.52,.47,.42,.36,.27,0][Math.round(r*8)]:['dome','spherical'].includes(spec.shape)?Math.sqrt(Math.max(0,1-r*r)):1-r)];
  // Radius sqrt(2) covers rectangular footprint corners; outside ellipse roof is flat.
  const patches=[];
  for(let k=0;k<sectors;k++){
@@ -210,14 +216,29 @@ function measuredRoof(polys,item,foot,scale,w,h,manual){
  }return out;
 }
 
+// Optional neighbourhood inference. Only tagged residential peers vote. No landmarks,
+// courtyards, arbitrary building=yes, mapped flat roofs, parts or synthetic training data.
+function neighbourhoodRoofs(data){
+ const dim=R.boundsInfo(data.bounds),cells=new Map(),types=new Set(['house','detached','semidetached_house','terrace','residential','apartments']);
+ function descriptor(b){const t=b.tags||{},k=t.building;if(!types.has(k)||b.landmark||b.name||t.historic||t.amenity||t.tourism||t.heritage||t.man_made||t['building:part']||b.partIds?.length||b.detailRoof||b.rings?.length!==1)return null;
+  const ring=b.rings[0],bb=R.ringBox(ring),area=Math.abs(ring.reduce((sum,p,i)=>{const q=ring[(i+1)%ring.length];return sum+p[0]*q[1]-p[1]*q[0];},0))/2*dim.w*dim.h;if(area<24||area>1200)return null;
+  return {group:['house','detached','semidetached_house'].includes(k)?'house':k,x:(bb[0]+bb[2])*dim.w/2,y:(bb[1]+bb[3])*dim.h/2,area};}
+ const key=(g,x,y)=>g+':'+x+':'+y;
+ for(const b of data.buildings){const shape=b.tags?.['roof:shape']||b.tags?.['building:roof:shape'];if(!shape)continue;const d=descriptor(b);if(!d)continue;const k=key(d.group,Math.floor(d.x/200),Math.floor(d.y/200));if(!cells.has(k))cells.set(k,[]);cells.get(k).push({...d,shape,id:b.id});}
+ return b=>{const d=descriptor(b);if(!d||b.tags?.['roof:shape']||b.tags?.['building:roof:shape']||String(b.tags?.['roof:levels'])==='0'||String(b.tags?.['roof:height'])==='0')return null;
+  const xx=Math.floor(d.x/200),yy=Math.floor(d.y/200),near=[];for(let i=xx-1;i<=xx+1;i++)for(let j=yy-1;j<=yy+1;j++)for(const a of cells.get(key(d.group,i,j))||[]){const dist=Math.hypot(a.x-d.x,a.y-d.y);if(a.id!==b.id&&a.area/d.area>=.5&&a.area/d.area<=2&&dist<=200)near.push([dist,a]);}
+  near.sort((a,b)=>a[0]-b[0]);const ids=new Set(),votes=new Map();for(const [,a] of near){if(ids.has(a.id))continue;ids.add(a.id);votes.set(a.shape,1+(votes.get(a.shape)||0));if(ids.size===8)break;}
+  if(ids.size<4)return null;for(const [shape,n] of votes)if(['gabled','hipped'].includes(shape)&&n/ids.size>=.8)return shape;return null;};
+}
 function architecturePatches(data,s,terrainAt,w,h,scale){
  const out=[],stats={referenceModels:0,referenceFaces:0,plainFootprints:0,buildings:0,roofTagged:0,roofEstimated:0,heightEstimated:0,unsupportedRoofs:0,walls:0,minHeightFilled:0,omitted:0,parts:0};
  const border=[[-w/2,-h/2],[w/2,-h/2],[w/2,h/2],[-w/2,h/2]];
- const lookupRoof=roofLookup(data);stats.measuredRoofs=0;stats.roofSources=[];
+ const lookupRoof=roofLookup(data),localShape=s.architectureMode==='context'?neighbourhoodRoofs(data):()=>null;stats.contextRoofs=0;stats.underground=0;stats.measuredRoofs=0;stats.roofSources=[];
  const parents=new Map();for(const b of data.buildings){if(!parents.has(b.id))parents.set(b.id,[]);parents.get(b.id).push(b);}
  for(let i=0;i<data.buildings.length;i++){
   const b=data.buildings[i],tag=b.tags||{},override=s.landmarkOverrides[b.id]||{};
   if(!b.rings?.length)continue;
+  if(tag.location==='underground' && !(Number(tag['building:levels'])>0)){stats.underground++;continue;}
   const points=b.rings.reduce((n,r)=>n+r.length,0);if(points>5000)throw Object.assign(Error(`Der Grundriss hat ${points} Punkte; zulässig sind 5.000.`),{code:'FOOTPRINT_LIMIT',diagnostics:{objectId:b.id,points,limit:5000}});
   const rings=b.rings.map(r=>{const p=r.map(p=>[(p[0]-.5)*w,(.5-p[1])*h]);if(p.length>1&&eq(p[0],p.at(-1)))p.pop();return p;});
   if(rings[0].length<3)continue;
@@ -226,6 +247,7 @@ function architecturePatches(data,s,terrainAt,w,h,scale){
   if(!polys.length)continue;
   // Building parts replace only their footprint, not the entire main nave.
   for(const id of new Set(b.partIds||[]))for(const part of parents.get(id)||[]){
+   if(part.tags?.location==='underground'&&!(Number(part.tags['building:levels'])>0))continue;
    const cutters=decompose(part.rings.map(r=>r.map(p=>[(p[0]-.5)*w,(.5-p[1])*h])));
    for(const cutter of cutters){polys=polys.flatMap(p=>{if(!intersects(bbox(p),bbox(cutter)))return [p];const cut=splitBy(p,cutter);return cut.inside.length?cut.outside:[p];});}
   }
@@ -234,17 +256,17 @@ function architecturePatches(data,s,terrainAt,w,h,scale){
   const obj=Number.isFinite(override.height)?{...b,height:override.height,tags:{...tag,height:String(override.height)},heightSource:'Manuell'}:b;
   const spec=roofSpec(obj,scale),frame=roofFrame(rings[0],tag);
   const explicitAngle=Number(tag['roof:angle']);
-  if(spec.estimatedRoof&&Number.isFinite(explicitAngle)&&explicitAngle>0&&explicitAngle<85){spec.roof=Math.tan(explicitAngle*Math.PI/180)*(frame.umax-frame.umin)/(2*scale);spec.estimatedRoof=false;}
+  if(spec.estimatedRoof&&Number.isFinite(explicitAngle)&&explicitAngle>0&&explicitAngle<85){spec.roof=Math.tan(explicitAngle*Math.PI/180)*(frame.umax-frame.umin)/((spec.shape==='skillion'?1:2)*scale);spec.estimatedRoof=false;}
   const model=referenceFor(b),reference=model?referencePatches(b,model,data.bounds,w,h,scale,foot,border,override):null;
-  const item=!reference&&lookupRoof(b);const parts=reference||(item?measuredRoof(polys,item,foot,scale,w,h,Number.isFinite(override.height)?override.height:metres(tag.height)):roofPieces(polys,frame,spec,foot,scale));
-  if(reference){stats.referenceModels++;stats.referenceFaces+=reference.length;}else if(item){stats.measuredRoofs++;if(!stats.roofSources.includes(item.source))stats.roofSources.push(item.source);}else if(!tag['roof:shape']&&!tag['building:roof:shape']&&!b.partIds?.length&&!tag['rs:wall'])stats.plainFootprints++;
+  const item=!reference&&lookupRoof(b);const inferred=!reference&&!item&&spec.shape==='flat'&&!spec.unsupported&&localShape(b);if(inferred){spec.shape=inferred;spec.roof=NaN;spec.estimatedRoof=true;stats.contextRoofs++;}const parts=reference||(item?measuredRoof(polys,item,foot,scale,w,h,Number.isFinite(override.height)?override.height:metres(tag.height)):roofPieces(polys,frame,spec,foot,scale));
+  if(reference){stats.referenceModels++;stats.referenceFaces+=reference.length;}else if(item){stats.measuredRoofs++;if(!stats.roofSources.includes(item.source))stats.roofSources.push(item.source);}else if(!inferred&&!tag['roof:shape']&&!tag['building:roof:shape']&&!b.partIds?.length&&!tag['rs:wall'])stats.plainFootprints++;
   const isLand=override.enabled===undefined?!!b.landmark:!!override.enabled;
   for(const p of parts)out.push({...p,box:bbox(p.poly),kind:isLand?2:1,building:i});
   stats.buildings++;stats.parts+=tag['building:part']&&tag['building:part']!=='no'?1:0;
   stats.walls+=tag['rs:wall']==='yes'?1:0;
-  if(!reference&&!item&&spec.source!=='OSM-Höhe')stats.heightEstimated++;
-  if(spec.shape!=='flat')stats.roofTagged++;
-  if(spec.estimatedRoof&&spec.shape!=='flat')stats.roofEstimated++;
+  if(!reference&&!item&&spec.source!=='OSM-Höhe'&&!b.worldSource?.fields?.includes('height'))stats.heightEstimated++;
+  if(spec.shape!=='flat'&&!inferred)stats.roofTagged++;
+  if(!inferred&&spec.estimatedRoof&&spec.shape!=='flat')stats.roofEstimated++;
   if(spec.unsupported)stats.unsupportedRoofs++;
   if(spec.minHeight>0)stats.minHeightFilled++;
  }
@@ -255,6 +277,8 @@ function overlay(faces,patch){
  const out=[];
  for(const f of faces){
   if(!intersects(f.box||bbox(f.poly),patch.box)){out.push(f);continue;}
+  // On dense assemblies, do not cut a face for a roof wholly hidden below it.
+  if(patch.fastEnvelope&&!patch.force&&patch.kind===f.kind&&f.poly.every(pt=>evalZ(f.plane,pt)>=evalZ(patch.plane,pt))){out.push(f);continue;}
   const hit=splitBy(f.poly,patch.poly);
   if(!hit.inside.length){out.push(f);continue;}
   for(const p of hit.outside)out.push({...f,poly:p,box:bbox(p)});
@@ -574,6 +598,12 @@ function buildArchitecture(data,settings,repairs=[],attempt=0){
   const p=patches[i],bb=p.box,x0=R.clamp(Math.floor((bb[0]+W/2)/dx),0,cols-2),x1=R.clamp(Math.floor((bb[2]+W/2)/dx),0,cols-2),y0=R.clamp(Math.floor((H/2-bb[3])/dy),0,rows-2),y1=R.clamp(Math.floor((H/2-bb[1])/dy),0,rows-2);
   for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++){const key=y*(cols-1)+x;if(!bins.has(key))bins.set(key,[]);bins.get(key).push(i);}
  }
+ // Upper-envelope order avoids subdividing hidden roofs hundreds of times. Forced boundary
+ // and seam repairs retain priority and the final solid still undergoes the full topology audit.
+ if(data.buildings.some(b=>(b.partIds?.length||0)>70)){
+  const top=patches.map(p=>{p.fastEnvelope=true;return Math.max(...p.poly.map(x=>evalZ(p.plane,x)));});
+  for(const list of bins.values())if(list.length>10)list.sort((a,b)=>{const ga=patches[a].force?(patches[a].precisionRepair?2:0):1,gb=patches[b].force?(patches[b].precisionRepair?2:0):1;return ga-gb||(ga===1?top[b]-top[a]:0)||a-b;});
+ }
  const faces=[],topCount=(cols-1)*(rows-1)*6,v=terrain.vertices,idx=terrain.indices;
  for(let i=0;i<topCount;i+=3){
   if(i%24576===0)tick('Flächen verbinden',i/3,topCount/3);
@@ -792,5 +822,5 @@ function buildWithStreets(data,input){const s=R.cleanSettings(input),info=R.boun
  return addStreetRelief(mesh,data.roads,s,w,h,w/info.w);
 }
 
-Object.assign(R,{checkRoofPack,buildRasterMesh:raster,buildMesh:buildWithStreets,architecture:{roofLookup,measuredRoof,referenceFor,referencePatches,importRoofSurfaces,conformVerticalChains,smoothTerrainGrid,roadCurve,roadAnchors,decompose,roofSpec,roofFrame,roofPieces,half,overlay,stitchSurface,buildArchitecture}});
+Object.assign(R,{checkRoofPack,buildRasterMesh:raster,buildMesh:buildWithStreets,architecture:{neighbourhoodRoofs,roofLookup,measuredRoof,referenceFor,referencePatches,importRoofSurfaces,conformVerticalChains,smoothTerrainGrid,roadCurve,roadAnchors,decompose,roofSpec,roofFrame,roofPieces,half,overlay,stitchSurface,buildArchitecture}});
 })(globalThis.RS);
