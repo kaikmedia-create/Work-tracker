@@ -1,0 +1,45 @@
+name: Verify integrated landmark and roof-height sources
+on:
+  push:
+    branches: [qa/landmark-surfaces-26]
+    paths: ['.github/workflows/rs27-integrate.yml']
+permissions: {contents: write}
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with: {path: review, persist-credentials: false}
+      - uses: actions/checkout@v4
+        with: {path: candidate, ref: 3cb96e6b4f464fdf404c64dff49d73bda3a5f751, persist-credentials: false}
+      - uses: actions/checkout@v4
+        with: {path: height, ref: 69fb62b61ce3d838745abd59e29895f6881bd4e9, persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Preserve vector references and integrate only identical locally tested changes
+        working-directory: candidate
+        run: |
+          node relief-studio/source/tools/prepare_release26.mjs
+          python3 ../review/.rs26/integrate27.py relief-studio ../height/relief-studio
+          git add -- relief-studio
+          python3 - <<'PY'
+          import pathlib,hashlib as h,subprocess as s
+          paths=s.check_output(['git','diff','--cached','--name-only']).decode().splitlines();assert len(paths)==30 and all(p.startswith('relief-studio/') for p in paths),paths
+          digest=h.sha256(''.join(p.removeprefix('relief-studio/')+':'+h.sha256(pathlib.Path(p).read_bytes()).hexdigest()+'\n' for p in sorted(paths)).encode()).hexdigest();print('integrated release:',digest);assert digest=='7a3573ef9ba843850b0caa900f5c8c94a5c1ee4e11aa95b5731ca8d20fc6f8c1'
+          PY
+      - name: Test integrated release and exact live preview reconstruction
+        working-directory: candidate/relief-studio/source
+        run: npm test
+      - name: Stage verified sources without touching the live branch
+        working-directory: candidate
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          python3 - <<'PY'
+          import json,os,subprocess as s,urllib.request as u
+          base='https://api.github.com/repos/'+os.environ['GITHUB_REPOSITORY']+'/git/'
+          def post(route,obj):
+           req=u.Request(base+route,data=json.dumps(obj).encode(),headers={'Content-Type':'application/json','Authorization':'Bearer '+os.environ['GH_TOKEN']});return json.load(u.urlopen(req,timeout=45))
+          paths=s.check_output(['git','diff','--cached','--name-only']).decode().splitlines();assert len(paths)==30 and all(p.startswith('relief-studio/') for p in paths)
+          tree=post('trees',{'base_tree':s.check_output(['git','rev-parse','HEAD^{tree}']).decode().strip(),'tree':[{'path':p,'mode':'100644','type':'blob','content':s.check_output(['git','show',':'+p]).decode()} for p in paths]})['sha'];commit=post('commits',{'message':'Integrate measured roof fields as a fallback; preserve mapped assemblies, tower references and GeoJSON imports','tree':tree,'parents':[s.check_output(['git','rev-parse','HEAD']).decode().strip()]})['sha'];post('refs',{'ref':'refs/heads/feature/verified-landmark-integration-27','sha':commit});print(commit)
+          PY
