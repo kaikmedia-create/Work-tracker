@@ -1,0 +1,11 @@
+{
+  "release": "20.0.0",
+  "testedSource": "8f6f9165ac1356f4e7e0d16f7e01a43c4a786b80",
+  "ciRun": 41813147104,
+  "unitAndRegressionTests": {"passed":228,"failed":0,"skipped":0},
+  "browser": {"engine":"Chromium", "source":"checksum-verified preview with a pre-existing real Weinheim project; no fresh map download", "sizeKm":[3.2,3], "mapWidthMm":200, "modelsBuilt":["raised","engraved","off"], "modelledBuildingObjects":6344, "missedBuildingObjects":0, "pageErrors":0},
+  "roads": {"profileMm":0.6,"activeLines":2599,"major":13,"secondary":210,"local":1173,"paths":1203,"clippedSegments":11390,"verticesWithChangedHeight":237577,"raisedMaxMm":0.6000001430511475,"engravedMaxMm":0.5999999046325684,"offMaxMm":0},
+  "triangles": {"raised":2234520,"engraved":2234520,"off":1155732},
+  "raisedModelExports": {"method":"Actual browser export buttons. Independently parsed STL and 3MF, compared every triangle coordinate, welded coincident coordinates, checked paired directed edges, connected components, positive volume and zero-area faces.","stlBytes":111726084,"threeMfBytes":166534735,"coordinatesIdentical":true,"weldedVertices":1117262,"connectedComponents":1,"invalidEdgePairs":0,"repeatedEdgePairs":0,"zeroAreaTriangles":0,"volumeMm3":322556.57},
+  "physicalTestPrint":false
+}
