@@ -199,12 +199,22 @@ function parseOSM(raw,bounds) {
  const buildings=[],roads=[],water=[],parks=[],landmarks=[],warnings=[],coastlines=[];
  const els=raw.elements, used=new Set(), nodeMap=new Map(els.filter(e=>e.type==='node').map(e=>[e.id,[e.lon,e.lat]]));
  const coords=e=>(e.geometry?e.geometry.filter(p=>p&&Number.isFinite(p.lon)&&Number.isFinite(p.lat)).map(p=>[p.lon,p.lat]):(e.nodes||[]).map(id=>nodeMap.get(id)).filter(Boolean));
- function feature(e,rings,kind) {
+ function assemblyMembers(e,role){return (e.members||[]).filter(m=>m.role===role&&(m.type==='way'||m.type==='relation')).map(m=>m.type+'/'+m.ref);}
+ const groups=els.filter(e=>e.type==='relation'&&e.tags?.type==='building'),inherited=new Map();
+ for(const g of groups)for(const role of ['outline','part'])for(const id of assemblyMembers(g,role)){
+  // Untagged role members still have a documented purpose. Keep member tags authoritative.
+  if(role==='outline'){const {type,...t}=g.tags;inherited.set(id,{building:'yes',...t});}
+  else if(!inherited.has(id))inherited.set(id,{'building:part':'yes'});
+ }
+ const originalElements=els.slice(),known=new Set(els.map(e=>e.type+'/'+e.id));
+ for(const g of groups)for(const m of g.members||[]){const key=m.type+'/'+m.ref;if(m.type==='way'&&inherited.has(key)&&!known.has(key)&&m.geometry?.length>=4){originalElements.push({type:'way',id:m.ref,geometry:m.geometry,tags:m.tags||{}});known.add(key);}}
+ const expanded=originalElements.map(e=>{const tags=inherited.get(e.type+'/'+e.id);return tags?{...e,tags:{...tags,...e.tags}}:e;});
+ function feature(e,rings,kind,suffix='') {
   const t=e.tags||{}, n=rings.map(r=>normalized(bounds,r));
   if(!n.length||n[0].length<3)return;
-  const name=String(t.name||t['name:de']||'').slice(0,120), id=e.type+'/'+e.id;
+  const name=String(t.name||t['name:de']||'').slice(0,120), id=e.type+'/'+e.id+suffix;
   const f={id,name,rings:n,tags:t};
-  if(kind==='building')buildings.push({...f,...parseHeight(t),landmark:!!(t.historic||t.tourism||t.man_made==='tower'||/castle|church|tower|cathedral/.test(t.building||''))});
+  if(kind==='building')buildings.push({...f,...parseHeight(t),landmark:!!(t.historic||t.tourism||t.man_made==='tower'||t.amenity==='townhall'||t.amenity==='place_of_worship'||t.railway==='station'||t.heritage||/^(castle|church|tower|cathedral|chapel|mosque|synagogue|temple|public|train_station)$/.test(t.building||''))});
   if(kind==='water')water.push(f);
   if(kind==='park')parks.push(f);
  }
@@ -215,14 +225,14 @@ function parseOSM(raw,bounds) {
   if(t.landuse==='forest'||t.natural==='wood'||t.leisure==='park'||t.landuse==='grass')return 'park';
   return '';
  }
- for(const e of els.filter(e=>e.type==='relation')){
-  const t=e.tags||{}, k=kind(t);if(!k)continue;
-  const members=e.members||[],outers=joinSegments(members.filter(m=>m.type==='way'&&m.role!=='inner').map(coords)),inners=joinSegments(members.filter(m=>m.type==='way'&&m.role==='inner').map(coords));
+ for(const e of expanded.filter(e=>e.type==='relation')){
+  const t=e.tags||{}, k=kind(t);if(!k||t.type==='building')continue;
+  const members=e.members||[],outers=joinSegments(members.filter(m=>m.type==='way'&&(!m.role||m.role==='outer')).map(coords)),inners=joinSegments(members.filter(m=>m.type==='way'&&m.role==='inner').map(coords));
   if(!outers.length){warnings.push('Unvollständige Relation '+e.id);continue;}
-  for(const r of outers)feature(e,[r,...inners.filter(h=>insideRing(h[0][0],h[0][1],r))],k);
-  for(const m of members)if(m.type==='way')used.add(m.ref);
+  outers.forEach((r,i)=>feature(e,[r,...inners.filter(h=>insideRing(h[0][0],h[0][1],r))],k,i?':outer:'+i:''));
+  for(const m of members)if(m.type==='way'&&(!m.role||m.role==='inner'||m.role==='outer'))used.add(m.ref);
  }
- for(const e of els){
+ for(const e of expanded){
   const t=e.tags||{};let c=e.type==='node'?[[e.lon,e.lat]]:coords(e);
   if(e.type==='way'){
    if(t.highway&&c.length>1)roads.push({id:'way/'+e.id,kind:roadClass(t.highway),highway:t.highway,underground:(!!t.tunnel&&t.tunnel!=='no')||t.location==='underground',inactive:/^(construction|proposed|abandoned|razed|demolished)$/.test(t.highway),name:String(t.name||'').slice(0,120),points:normalized(bounds,c)});
@@ -254,6 +264,12 @@ function parseOSM(raw,bounds) {
   // Clamp query span: objects far beyond the selection must not cause huge loops.
   for(let y=Math.max(-1,Math.floor(box[1]*100));y<=Math.min(101,Math.ceil(box[3]*100));y++)for(let x=Math.max(-1,Math.floor(box[0]*100));x<=Math.min(101,Math.ceil(box[2]*100));x++)
    for(const p of cells.get(x+','+y)||[])if(inside(...p.c,b.rings)&&p.b.id!==b.id)b.partIds.push(p.b.id);
+ }
+ // type=building describes membership, not a polygon. Explicit outline/part roles
+ // take priority over proximity, including concave parts whose centroid is outside.
+ const bySource=new Map();for(const b of buildings){const key=b.id.split(':outer:')[0];if(!bySource.has(key))bySource.set(key,[]);bySource.get(key).push(b);}
+ for(const g of groups){const outlines=assemblyMembers(g,'outline').flatMap(id=>bySource.get(id)||[]),parts=assemblyMembers(g,'part').flatMap(id=>bySource.get(id)||[]);
+  for(const b of outlines){const bb=ringBox(b.rings[0]),linked=parts.filter(p=>{const c=ringBox(p.rings[0]);return p.id!==b.id&&c[0]<bb[2]&&bb[0]<c[2]&&c[1]<bb[3]&&bb[1]<c[3];}).map(p=>p.id);b.partIds=[...new Set([...(b.partIds||[]),...linked])];}
  }
  const kept=buildings;
  // Fail closed if a coastline geometry would flood a built-up part of town.
@@ -312,7 +328,7 @@ function cleanSettings(input={}) {
 }
 function validateProject(p) {
  if(!p||![2,3].includes(p.version)||!p.data||!p.settings)throw Error('Keine gültige Relief-Studio-Projektdatei (Version 2 oder 3). Bitte eine .relief.json-Datei öffnen, kein Bild oder PDF.');
- const d=p.data;validateBounds(d.bounds,p.settings.mode);
+ const d=p.data;if(d.roofPack)R.checkRoofPack(d.roofPack);validateBounds(d.bounds,p.settings.mode);
  if(!d.terrain||!Number.isInteger(d.terrain.cols)||!Number.isInteger(d.terrain.rows)||!Array.isArray(d.terrain.values)||d.terrain.values.length!==d.terrain.cols*d.terrain.rows||d.terrain.cols<2||d.terrain.rows<2||d.terrain.cols>1025||d.terrain.rows>1025||!d.terrain.values.every(x=>Number.isFinite(x)&&x>=-12000&&x<10000))throw Object.assign(Error('Ungültiges Höhenraster. Erwartet: ganze Spalten- und Zeilenzahl (2–1025) und genau ein gültiger Höhenwert pro Rasterpunkt.'),{code:'IMPORT_TERRAIN_GRID',diagnostics:{cols:d.terrain?.cols,rows:d.terrain?.rows,actualValues:d.terrain?.values?.length}});
  for(const k of ['buildings','roads','water','parks','landmarks'])if(!Array.isArray(d[k])||d[k].length>100000)throw Error('Ungültige Kartenobjekte.');
  let points=0;

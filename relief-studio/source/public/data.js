@@ -51,7 +51,7 @@ async function request(url,options={},timeout=40000){
 }
 const boxText=b=>[b[1],b[0],b[3],b[2]].map(x=>x.toFixed(6)).join(',');
 const WAY_FILTERS='way[building][building!="no"];way["building:part"];way[man_made~"^(tower|lighthouse)$"];way[barrier=wall];way[historic=citywalls];way[highway];way[waterway];way[natural=water];way[natural=coastline];way[water];way[landuse~"^(forest|grass)$"];way[natural=wood];way[leisure=park];';
-const REL_FILTERS='relation[type=multipolygon][building][building!="no"];relation[type=multipolygon]["building:part"];relation[type=multipolygon][natural=water];relation[type=multipolygon][water];relation[type=multipolygon][waterway=riverbank];';
+const REL_FILTERS='relation[type=building];relation[type=multipolygon][building][building!="no"];relation[type=multipolygon]["building:part"];relation[type=multipolygon][natural=water];relation[type=multipolygon][water];relation[type=multipolygon][waterway=riverbank];';
 function osmQuery(b,layer='base'){
  if(!['base','geometry','relations'].includes(layer))throw Error('Unbekannte Kartenebene.');
  // qt avoids sorting thousands of objects by ID. Keep FULL polygon geometry:
@@ -103,7 +103,7 @@ function createDataLoader(options={}){
  }
  function completePackage(raw){return raw&&Array.isArray(raw.elements)&&!raw.remark;}
  function allowed(){if(Date.now()<cooldown)throw error('RATE_LIMIT',`Kartendienst-Pause: noch ${Math.ceil((cooldown-Date.now())/1000)} s. Bereits geladene Pakete bleiben gespeichert.`,{retryAt:cooldown});}
- function keyFor(b,layer){return 'osm12:'+layer+':'+b.map(x=>x.toFixed(6)).join(',');}
+ function keyFor(b,layer){return (layer==='relations'?'osm26:':'osm12:')+layer+':'+b.map(x=>x.toFixed(6)).join(',');}
  async function getOSMLayer(b,signal,layer,onProgress,opts={}){
   const key=keyFor(b,layer),phase=layer==='pois'?'pois':'base';check(signal);
   if(!opts.refresh){const saved=await cache.get(key);check(signal);if(completePackage(saved)){send(onProgress,{phase,status:'cached',detail:'Datenpaket aus lokalem Speicher.'});return saved;}}

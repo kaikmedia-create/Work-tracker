@@ -3,7 +3,7 @@ import '../public/core.js';import '../public/data.js';
 const R=globalThis.RS,bounds=R.boundsFor(8.682,49.549,1,1);
 const raw={elements:[]},json=()=>new Response(JSON.stringify(raw));
 const store=()=>{const m=new Map();return {get:async k=>m.get(k),set:async(k,v)=>m.set(k,v)};};
-const key=(b,l)=>'osm12:'+l+':'+b.map(x=>x.toFixed(6)).join(',');
+const key=(b,l)=>(l==='relations'?'osm26:':'osm12:')+l+':'+b.map(x=>x.toFixed(6)).join(',');
 const make=(fetch,cache=store(),cfg={})=>R.createDataLoader({fetch,cache,config:{headerMs:80,poiMs:100,idleMs:100,bodyMs:500,sessionMs:1000,retryMs:1,...cfg}});
 const hold=signal=>new Promise((_,reject)=>{const stop=()=>reject(new DOMException('cancelled','AbortError'));if(signal.aborted)return stop();signal.addEventListener('abort',stop,{once:true});});
 const opts={mode:'model',terrainRequired:false};

@@ -77,7 +77,7 @@ const server=http.createServer(async(req,res)=>{
   const b=(url.searchParams.get('bbox')||'').split(',').map(Number);try{R.validateBounds(b,url.searchParams.get('mode')==='poster'?'poster':'model');}catch(e){send(res,400,e.message,'text/plain');return;}
   const layer=url.searchParams.get('layer')||'base';if(!['base','geometry','relations','pois'].includes(layer)){send(res,400,JSON.stringify({error:'Unbekannte Kartenebene.'}),'application/json');return;}
   try{
-   const payload=await cached('map:v16:'+layer+':'+b.join(','),async()=>{
+   const payload=await cached((layer==='relations'?'map:v26:':'map:v16:')+layer+':'+b.join(','),async()=>{
     const europe=R.europeBounds(b);
     const hosts=europe?['https://ovp.dresel.systems/api/interpreter','https://overpass.private.coffee/api/interpreter','https://maps.mail.ru/osm/tools/overpass/api/interpreter','https://overpass-api.de/api/interpreter']:['https://overpass.private.coffee/api/interpreter','https://maps.mail.ru/osm/tools/overpass/api/interpreter','https://overpass-api.de/api/interpreter'];
     let last;for(const host of hosts){
