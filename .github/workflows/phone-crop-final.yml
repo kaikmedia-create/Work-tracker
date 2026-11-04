@@ -1,0 +1,30 @@
+name: Verify final phone crop and downloads
+on:
+  push:
+    branches: [qa/phone-crop-final-export]
+    paths: [.github/workflows/phone-crop-final.yml]
+permissions:
+  contents: read
+jobs:
+  phone:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    container:
+      image: mcr.microsoft.com/playwright/python:v1.57.0-noble
+      options: --ipc=host
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - name: Test both engines and save real STL and PDF files from mobile controls
+        run: |
+          set -eu
+          python -m pip install -q playwright==1.57.0
+          python -m http.server 8080 --bind 127.0.0.1 >/tmp/phone-http.log 2>&1 &
+          SERVER=$!; trap 'kill "$SERVER" || true' EXIT
+          mkdir -p evidence
+          for engine in chromium webkit; do python relief-studio/source/tests/phone_crop_flow.py http://127.0.0.1:8080/relief-studio/ "$engine" evidence; done
+          python relief-studio/source/tests/phone_webkit_download.py relief-studio/source http://127.0.0.1:8080/relief-studio/
+          mv webkit-exports.json evidence/
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: phone-crop-final, path: evidence/, retention-days: 3}
