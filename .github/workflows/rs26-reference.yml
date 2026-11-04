@@ -1,0 +1,24 @@
+name: Verify landmark reference imagery
+on:
+  push:
+    branches: [qa/landmarks26]
+    paths: ['.github/workflows/rs26-reference.yml']
+permissions: {}
+jobs:
+  ref:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Request the published orthoimagery for one small site
+        run: |
+          python - <<'PY'
+          import urllib.request as u,urllib.parse as p,xml.etree.ElementTree as E
+          base='https://owsproxy.lgl-bw.de/owsproxy/ows/WMS_LGL-BW_ATKIS_DOP_20_C?'
+          caps=u.urlopen(base+'service=WMS&request=GetCapabilities',timeout=40).read();root=E.fromstring(caps)
+          layers=[l.findtext('{*}Name') for l in root.findall('.//{*}Layer') if l.findtext('{*}Name')];print(layers);assert layers
+          for layer in reversed(layers):
+           qs=dict(service='WMS',request='GetMap',version='1.1.1',layers=layer,styles='',srs='EPSG:25832',bbox='476550,5489000,476620,5489070',width=700,height=700,format='image/png')
+           data=u.urlopen(base+p.urlencode(qs),timeout=40).read()
+           if data.startswith(b'\x89PNG'):open('reference.png','wb').write(data);print(layer);break
+          PY
+      - uses: actions/upload-artifact@v4
+        with: {name: official-ortho, path: reference.png, retention-days: 1, if-no-files-found: error}
