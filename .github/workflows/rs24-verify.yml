@@ -1,0 +1,62 @@
+name: Verify smooth terrain and print navigation
+on:
+  push:
+    branches: [qa/terrain-navigation-24]
+permissions:
+  contents: write
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with: {path: review, persist-credentials: false}
+      - uses: actions/checkout@v4
+        with: {path: candidate, ref: a7143e692b99d85073c824a2ecdf053f62217fec, persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Verify exact base and reconstruct 27 locally tested files
+        run: |
+          cd candidate
+          node relief-studio/source/tools/prepare_release23.mjs
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib,struct,subprocess as s
+          r=Path('relief-studio'); h=lambda x:hashlib.sha256(x).hexdigest()
+          names='DEPLOYMENT.json RELEASE-NOTES-24.md gate-v24.js index.html source/package.json source/public/app.js source/public/architecture.js source/public/core.js source/public/diagnostics.js source/public/index.html source/public/viewer.js source/tests/navigation-terrain24.test.mjs'.split()+['source/tests/v%d_gate.test.mjs'%i for i in range(12,25)]+['source/tools/prepare_release24.mjs','upgrade24.json']
+          assert len(names)==27
+          original=b''
+          for n in names:
+           f=r/n
+           if not f.is_file():f=r/n.replace('24','23')
+           if f.is_file():original+=f.read_bytes()
+          assert h(original)=='dff39a87875bfd40533602c992958224cfaf34911f14ec08d1fa4b783e64fdcc','Unexpected base source'
+          Path('/tmp/rs24-dict').write_bytes(original)
+          output=s.check_output(['zstd','-d','-q','--patch-from=/tmp/rs24-dict','../review/.rs24/release.zst','--stdout']);assert h(output)=='4fa9160b8b9a0a8d9cf03a52b503bcd54418d9ea6ad3fb4224283b01d57a8e56','Reconstructed bytes differ from tested release'
+          at=0
+          for n in names:
+           size=struct.unpack_from('>I',output,at)[0];at+=4;assert at+size<=len(output);(r/n).write_bytes(output[at:at+size]);at+=size
+          assert at==len(output)
+          s.run(['git','add','--']+[str(r/n) for n in names],check=True)
+          PY
+      - name: Test all source, terrain geometry, camera and encrypted preview
+        working-directory: candidate/relief-studio/source
+        run: npm test
+      - name: Stage tested files only (no user data, no production branch writes)
+        working-directory: candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json,os,subprocess as s,urllib.request as u
+          prefix='https://api.github.com/repos/'+os.environ['GITHUB_REPOSITORY']+'/git/'
+          headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json'}
+          def post(route,payload):
+           with u.urlopen(u.Request(prefix+route,data=json.dumps(payload).encode(),headers=headers),timeout=45) as f:return json.load(f)
+          paths=s.check_output(['git','diff','--cached','--name-only']).decode().splitlines()
+          assert len(paths)==27 and all(p.startswith('relief-studio/') for p in paths)
+          base=s.check_output(['git','rev-parse','HEAD^{tree}']).decode().strip();parent=s.check_output(['git','rev-parse','HEAD']).decode().strip()
+          entries=[{'path':p,'mode':'100644','type':'blob','content':s.check_output(['git','show',':'+p]).decode()} for p in paths]
+          tree=post('trees',{'base_tree':base,'tree':entries})['sha'];commit=post('commits',{'message':'Relief Studio 24: smooth printable terrain, default to STL and add cursor-anchored pan/pinch/zoom','tree':tree,'parents':[parent]})['sha']
+          post('refs',{'ref':'refs/heads/feature/verified-terrain-navigation-24','sha':commit});print('Verified source:',commit)
+          PY
