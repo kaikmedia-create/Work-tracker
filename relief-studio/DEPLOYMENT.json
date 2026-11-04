@@ -1,13 +1,13 @@
 {
-  "version": "20.0.0",
+  "version": "21.0.0",
   "account": "kaikmedia-create",
   "repository": "kaikmedia-create/Work-tracker",
   "folder": "relief-studio",
   "target": "github-pages",
   "status": "requires-deployment-check",
-  "base_commit": "6b69f8b58dceeb510f10a9935aeab5c2216b5402",
+  "base_commit": "bfa149b8c95da0246c614988a92a53ea92ad499f",
   "entry": "index.html",
-  "gate": "gate-v20.js",
+  "gate": "gate-v21.js",
   "base_package": "bundle10.json",
   "updates": [
     "upgrade11.json",
@@ -20,14 +20,15 @@
     "upgrade17.json",
     "upgrade18.json",
     "upgrade19.json",
-    "upgrade20.json"
+    "upgrade20.json",
+    "upgrade21.json"
   ],
-  "source_in_repository": "Print-scale relief of surface streets and paths; SHA-256 checked release 20 sources.",
+  "source_in_repository": "Water and green relief; bounded interactive preview and worker exports.",
   "checks": {
     "runner": "npm test",
-    "feature": "tests/streets20.test.mjs"
+    "feature": "tests/surfaces21.test.mjs"
   },
   "gating": "static preview PIN; not server-side access control",
   "code_commit": null,
-  "note": "Printable raised, engraved and disabled road modes; no extra network request."
+  "note": "Geometry is full resolution in both export formats."
 }

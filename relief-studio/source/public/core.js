@@ -226,7 +226,7 @@ function parseOSM(raw,bounds) {
   const t=e.tags||{};let c=e.type==='node'?[[e.lon,e.lat]]:coords(e);
   if(e.type==='way'){
    if(t.highway&&c.length>1)roads.push({id:'way/'+e.id,kind:roadClass(t.highway),highway:t.highway,underground:(!!t.tunnel&&t.tunnel!=='no')||t.location==='underground',inactive:/^(construction|proposed|abandoned|razed|demolished)$/.test(t.highway),name:String(t.name||'').slice(0,120),points:normalized(bounds,c)});
-   if(t.waterway&&t.waterway!=='riverbank'&&c.length>1)roads.push({id:'water/'+e.id,kind:'river',points:normalized(bounds,c),highway:t.waterway,name:t.name||''});
+   if(t.waterway&&t.waterway!=='riverbank'&&c.length>1)roads.push({id:'water/'+e.id,kind:'river',points:normalized(bounds,c),highway:t.waterway,name:t.name||'',underground:!!(t.tunnel&&t.tunnel!=='no'||t.covered==='yes'||t.location==='underground'||Number(t.layer)<0),widthM:/^\d+(?:[.,]\d+)?(?:\s*m)?$/.test(String(t.width||''))?parseFloat(String(t.width).replace(',','.')):0});
    if(t.natural==='coastline'&&c.length>1)coastlines.push(normalized(bounds,c));
    if((t.barrier==='wall'||t.historic==='citywalls')&&!t.building&&c.length>1){
     const points=normalized(bounds,c),info=boundsInfo(bounds),width=clamp(parseFloat(t.width)||0.6,.15,15),height=clamp(parseFloat(t.height)||3,.3,100);
@@ -282,14 +282,15 @@ function sampleTerrain(terrain,u,v) {
  const x=clamp(u,0,1)*(cols-1), y=clamp(v,0,1)*(rows-1),a=Math.floor(x),b=Math.floor(y),c=Math.min(a+1,cols-1),d=Math.min(b+1,rows-1),tx=x-a,ty=y-b;
  return (values[b*cols+a]*(1-tx)+values[b*cols+c]*tx)*(1-ty)+(values[d*cols+a]*(1-tx)+values[d*cols+c]*tx)*ty;
 }
-const defaults={layout:'bottom',font:'serif',textAlign:'center',uppercase:true,boldTitle:false,tracking:0.025,subtitleScale:1,caption:'',captionScale:1,showCoordinates:true,coordinateStyle:'decimal',customCoordinates:'',divider:true,band:22,mapFit:'contain',mapBorder:false,mapScale:1,showAttribution:true,labelStyle:'plain',labelScale:1,labelMarkers:true,labelFont:'sans',labelColor:'#233737',markerColor:'#b57842',markerLimit:36,customColors:false,paperColor:'#faf8f2',landColor:'#f3f0e8',inkColor:'#233737',waterColor:'#ccd9dc',accentColor:'#b57842',majorColor:'#35494a',buildingColor:'#c6c4b9',title:'Weinheim',subtitle:'BADEN-WÜRTTEMBERG · DEUTSCHLAND',region:'Baden-Württemberg',countryCode:'DE',countryName:'Deutschland',autoSubtitle:true,lon:8.6808,lat:49.5480,widthKm:3.2,heightKm:3.0,modelWidth:200,base:3,geometryVersion:12,terrainFactor:1,buildingFactor:1,landmarkFactor:1,landmarkWidth:1,frame:4,waterDepth:0.45,resolution:321,major:2.2,secondary:1.3,local:0.7,paths:0.32,roadMode:'raised',roadRelief:0.6,style:'ivory',paper:'A4',paperW:210,paperH:297,orientation:'portrait',dpi:300,margin:12,headline:1,contours:true,hillshade:false,showBuildings:true,showLabels:true,format:'pdf',adaptive:true,mode:'model',landmarkOverrides:{}};
+const defaults={layout:'bottom',font:'serif',textAlign:'center',uppercase:true,boldTitle:false,tracking:0.025,subtitleScale:1,caption:'',captionScale:1,showCoordinates:true,coordinateStyle:'decimal',customCoordinates:'',divider:true,band:22,mapFit:'contain',mapBorder:false,mapScale:1,showAttribution:true,labelStyle:'plain',labelScale:1,labelMarkers:true,labelFont:'sans',labelColor:'#233737',markerColor:'#b57842',markerLimit:36,customColors:false,paperColor:'#faf8f2',landColor:'#f3f0e8',inkColor:'#233737',waterColor:'#ccd9dc',accentColor:'#b57842',majorColor:'#35494a',buildingColor:'#c6c4b9',title:'Weinheim',subtitle:'BADEN-WÜRTTEMBERG · DEUTSCHLAND',region:'Baden-Württemberg',countryCode:'DE',countryName:'Deutschland',autoSubtitle:true,lon:8.6808,lat:49.5480,widthKm:3.2,heightKm:3.0,modelWidth:200,base:3,geometryVersion:12,terrainFactor:1,buildingFactor:1,landmarkFactor:1,landmarkWidth:1,frame:4,waterDepth:0.45,waterMode:'engraved',greenRelief:.20,resolution:321,major:2.2,secondary:1.3,local:0.7,paths:0.32,roadMode:'raised',roadRelief:0.6,style:'ivory',paper:'A4',paperW:210,paperH:297,orientation:'portrait',dpi:300,margin:12,headline:1,contours:true,hillshade:false,showBuildings:true,showLabels:true,format:'pdf',adaptive:true,mode:'model',landmarkOverrides:{}};
 const paperSizes={'10 × 15 cm':[100,150],'13 × 18 cm':[130,180],'15 × 20 cm':[150,200],'20 × 30 cm':[200,300],'30 × 40 cm':[300,400],'30 × 45 cm':[300,450],'40 × 50 cm':[400,500],'40 × 60 cm':[400,600],'50 × 70 cm':[500,700],'50 × 75 cm':[500,750],'60 × 80 cm':[600,800],'60 × 90 cm':[600,900],'70 × 100 cm':[700,1000],A5:[148,210],A4:[210,297],A3:[297,420],A2:[420,594],A1:[594,841],A0:[841,1189],'20 × 20 cm':[200,200],'30 × 30 cm':[300,300],'40 × 40 cm':[400,400],'50 × 50 cm':[500,500],custom:[210,297]};
 const palettes={ivory:{name:'Atelier',paper:'#faf8f2',land:'#f3f0e8',water:'#ccd9dc',park:'#e6e9dd',building:'#c6c4b9',major:'#35494a',secondary:'#6a7774',local:'#a4aaa2',path:'#c1c5ba',ink:'#233737',accent:'#b57842',contour:'#c8c8b5'},mono:{name:'Monochrom',paper:'#ffffff',land:'#ffffff',water:'#e5e7eb',park:'#f3f4f3',building:'#d8d8d8',major:'#171717',secondary:'#565656',local:'#969696',path:'#c8c8c8',ink:'#141414',accent:'#282828',contour:'#dddddd'},blue:{name:'Nordic',paper:'#f4f7f8',land:'#eef2f1',water:'#b8ccd6',park:'#dce6df',building:'#b4c4cd',major:'#214c65',secondary:'#668ba0',local:'#99b4c2',path:'#b9ccd3',ink:'#193d54',accent:'#b17c4e',contour:'#cbd7d8'},night:{name:'Midnight',paper:'#142c31',land:'#19363b',water:'#0d2025',park:'#29433f',building:'#3d5556',major:'#f2d7a6',secondary:'#b8bbaa',local:'#748c87',path:'#4b6867',ink:'#f6ead6',accent:'#e1ae6a',contour:'#355152'}};
 function cleanSettings(input={}) {
  const s={...defaults};
  for(const k of Object.keys(defaults))if(Object.hasOwn(input,k))s[k]=input[k];
- const limits={lon:[-180,180],lat:[-80,80],widthKm:[0.1,24],heightKm:[0.1,24],modelWidth:[30,600],base:[1,15],terrainFactor:[0,8],buildingFactor:[0,6],landmarkFactor:[1,5],landmarkWidth:[1,3],frame:[0,20],waterDepth:[0,2],resolution:[65,641],major:[0,5],secondary:[0,4],local:[0,3],paths:[0,2],roadRelief:[0,1],paperW:[50,1600],paperH:[50,2000],dpi:[72,600],margin:[0,100],mapScale:[0.55,1],headline:[0.35,2],tracking:[0,0.3],subtitleScale:[0.5,2],captionScale:[0.5,2],band:[10,34],labelScale:[0.6,2],markerLimit:[0,100]};
+ const limits={lon:[-180,180],lat:[-80,80],widthKm:[0.1,24],heightKm:[0.1,24],modelWidth:[30,600],base:[1,15],terrainFactor:[0,8],buildingFactor:[0,6],landmarkFactor:[1,5],landmarkWidth:[1,3],frame:[0,20],waterDepth:[0,2],greenRelief:[0,.6],resolution:[65,641],major:[0,5],secondary:[0,4],local:[0,3],paths:[0,2],roadRelief:[0,1],paperW:[50,1600],paperH:[50,2000],dpi:[72,600],margin:[0,100],mapScale:[0.55,1],headline:[0.35,2],tracking:[0,0.3],subtitleScale:[0.5,2],captionScale:[0.5,2],band:[10,34],labelScale:[0.6,2],markerLimit:[0,100]};
  for(const [k,[a,b]] of Object.entries(limits))s[k]=clamp(finite(s[k],defaults[k]),a,b);
+ if(!['flat','raised','engraved'].includes(s.waterMode))s.waterMode=defaults.waterMode;
  if(!['off','raised','engraved'].includes(s.roadMode))s.roadMode='raised';
  // Old files defaulted to 0 mm even when the user never opened the hidden slider.
  if(!Object.hasOwn(input,'roadMode')&&s.roadRelief===0)s.roadRelief=defaults.roadRelief;
@@ -353,8 +354,8 @@ function buildMesh(data,settings) {
  }
  function raster(rings,cb){const b=ringBox(rings[0]),a=clamp(Math.floor((b[0]*w+f)/W*(n-1)),0,n-1),z=clamp(Math.ceil((b[2]*w+f)/W*(n-1)),0,n-1),top=clamp(Math.floor((b[1]*h+f)/H*(m-1)),0,m-1),bot=clamp(Math.ceil((b[3]*h+f)/H*(m-1)),0,m-1);let hits=0;
  for(let r=top;r<=bot;r++)for(let c=a;c<=z;c++){const u=xof(c),v=yof(r);if(u>=0&&u<=1&&v>=0&&v<=1&&inside(u,v,rings)){cb(r*n+c,u,v);hits++;}}return hits;}
- for(const p of data.water)raster(p.rings,i=>{heights[i]=Math.max(1,heights[i]-s.waterDepth);classes[i]=3;});
- for(const p of data.parks)raster(p.rings,i=>{if(classes[i]===0)classes[i]=5;});
+ for(const p of data.water)raster(p.rings,i=>{if(classes[i]!==3){heights[i]=Math.max(.6,heights[i]+(s.waterMode==='raised'?1:s.waterMode==='engraved'?-1:0)*s.waterDepth);classes[i]=3;}});
+ for(const p of data.parks)raster(p.rings,i=>{if(classes[i]===0){classes[i]=5;heights[i]+=s.greenRelief;}});
  // Roads are rasterised with physical widths. Poster rendering remains vector-based.
  for(const road of data.roads){
   const widths={major:9*s.major,secondary:7*s.secondary,local:5*s.local,path:2*s.paths,river:15},width=(widths[road.kind]||0)/d.w;
@@ -384,27 +385,45 @@ function buildMesh(data,settings) {
  let zmax=0;for(const z of heights)zmax=Math.max(zmax,z);
  return {vertices,indices:tris,classes:vertexClass,width:W,height:H,zmax,grid:[n,m],cell:Math.max(W/(n-1),H/(m-1)),missed,estimated,buildingCount:data.buildings.length};
 }
+// Display-only top surface sampled from the final printable solid. Keep export indices untouched.
+function previewSurface(mesh,limit=129){
+ const {vertices:v,indices:t,classes:cl,width:W,height:H,zmax}=mesh,max=Math.max(W,H);
+ const n=Math.max(2,Math.round((limit-1)*W/max)+1),m=Math.max(2,Math.round((limit-1)*H/max)+1),sx=(n-1)/W,sy=(m-1)/H;
+ const out=new Float32Array(n*m*3),classes=new Uint8Array(n*m),indices=new Uint32Array((n-1)*(m-1)*6);
+ for(let y=0;y<m;y++)for(let x=0;x<n;x++){const i=y*n+x;out[3*i]=x/sx-W/2;out[3*i+1]=H/2-y/sy;}
+ for(let j=0;j<t.length;j+=3){const a=t[j],b=t[j+1],c=t[j+2],ax=v[3*a],ay=v[3*a+1],ux=v[3*b]-ax,uy=v[3*b+1]-ay,vx=v[3*c]-ax,vy=v[3*c+1]-ay,d=ux*vy-uy*vx;if(d<=1e-12)continue;
+  const x0=Math.max(0,Math.ceil((ax+Math.min(0,ux,vx)+W/2)*sx-1e-5)),x1=Math.min(n-1,Math.floor((ax+Math.max(0,ux,vx)+W/2)*sx+1e-5));if(x0>x1)continue;
+  const y0=Math.max(0,Math.ceil((H/2-ay-Math.max(0,uy,vy))*sy-1e-5)),y1=Math.min(m-1,Math.floor((H/2-ay-Math.min(0,uy,vy))*sy+1e-5));
+  for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++){const i=y*n+x,X=x/sx-W/2-ax,Y=H/2-y/sy-ay,u=(X*vy-Y*vx)/d,q=(ux*Y-uy*X)/d,k=1-u-q;if(Math.min(k,u,q)<-1e-5)continue;
+   const h=k*v[3*a+2]+u*v[3*b+2]+q*v[3*c+2];if(h>=out[3*i+2]){out[3*i+2]=h;classes[i]=cl[k>=u&&k>=q?a:u>=q?b:c];}}
+ }
+ let j=0;for(let y=0;y<m-1;y++)for(let x=0;x<n-1;x++){const a=y*n+x,b=a+n,c=a+1;indices[j++]=a;indices[j++]=b;indices[j++]=c;indices[j++]=c;indices[j++]=b;indices[j++]=b+1;}
+ return {kind:'display-grid',width:W,height:H,zmax,grid:[n,m],vertices:out,indices,classes};
+}
 function stl(mesh) {
  const n=mesh.indices.length/3,buf=new ArrayBuffer(84+n*50),v=new DataView(buf),verts=mesh.vertices,idx=mesh.indices;const header=new TextEncoder().encode('Relief Studio | mm | map data (c) OpenStreetMap contributors | ODbL');new Uint8Array(buf).set(header.slice(0,80));v.setUint32(80,n,true);let off=84;
  for(let i=0;i<idx.length;i+=3){const a=idx[i]*3,b=idx[i+1]*3,c=idx[i+2]*3,ux=verts[b]-verts[a],uy=verts[b+1]-verts[a+1],uz=verts[b+2]-verts[a+2],vx=verts[c]-verts[a],vy=verts[c+1]-verts[a+1],vz=verts[c+2]-verts[a+2],normal=[uy*vz-uz*vy,uz*vx-ux*vz,ux*vy-uy*vx],l=Math.hypot(...normal)||1;for(const x of normal){v.setFloat32(off,x/l,true);off+=4;}for(const k of [a,b,c])for(let j=0;j<3;j++){v.setFloat32(off,verts[k+j],true);off+=4;}off+=2;}
  return buf;
 }
-function crc32(bytes) {let crc=-1;for(const b of bytes){crc^=b;for(let j=0;j<8;j++)crc=(crc>>>1)^((crc&1)?0xedb88320:0);}return (crc^-1)>>>0;}
+const crcTable=Uint32Array.from({length:256},(_,n)=>{for(let j=0;j<8;j++)n=(n>>>1)^((n&1)?0xedb88320:0);return n>>>0;});
+function crcChunks(chunks){let c=-1;for(const data of chunks)for(let i=0;i<data.length;i++)c=(c>>>8)^crcTable[(c^data[i])&255];return (c^-1)>>>0;}
+function crc32(bytes){return crcChunks([bytes]);}
 function zip(files) {
  const enc=new TextEncoder(),parts=[],central=[];let offset=0;
  for(const [name,value] of Object.entries(files)){
-  const nameBytes=enc.encode(name),data=typeof value==='string'?enc.encode(value):new Uint8Array(value),crc=crc32(data),local=new Uint8Array(30+nameBytes.length),v=new DataView(local.buffer);v.setUint32(0,0x04034b50,true);v.setUint16(4,20,true);v.setUint16(6,0x800,true);v.setUint32(14,crc,true);v.setUint32(18,data.length,true);v.setUint32(22,data.length,true);v.setUint16(26,nameBytes.length,true);local.set(nameBytes,30);
-  const ce=new Uint8Array(46+nameBytes.length),d=new DataView(ce.buffer);d.setUint32(0,0x02014b50,true);d.setUint16(4,20,true);d.setUint16(6,20,true);d.setUint16(8,0x800,true);d.setUint32(16,crc,true);d.setUint32(20,data.length,true);d.setUint32(24,data.length,true);d.setUint16(28,nameBytes.length,true);d.setUint32(42,offset,true);ce.set(nameBytes,46);parts.push(local,data);central.push(ce);offset+=local.length+data.length;
+  const nameBytes=enc.encode(name),chunks=Array.isArray(value)&&value[0] instanceof Uint8Array?value:[typeof value==='string'?enc.encode(value):new Uint8Array(value)],size=chunks.reduce((sum,b)=>sum+b.length,0),crc=crcChunks(chunks),local=new Uint8Array(30+nameBytes.length),v=new DataView(local.buffer);v.setUint32(0,0x04034b50,true);v.setUint16(4,20,true);v.setUint16(6,0x800,true);v.setUint32(14,crc,true);v.setUint32(18,size,true);v.setUint32(22,size,true);v.setUint16(26,nameBytes.length,true);local.set(nameBytes,30);
+  const ce=new Uint8Array(46+nameBytes.length),d=new DataView(ce.buffer);d.setUint32(0,0x02014b50,true);d.setUint16(4,20,true);d.setUint16(6,20,true);d.setUint16(8,0x800,true);d.setUint32(16,crc,true);d.setUint32(20,size,true);d.setUint32(24,size,true);d.setUint16(28,nameBytes.length,true);d.setUint32(42,offset,true);ce.set(nameBytes,46);parts.push(local,...chunks);central.push(ce);offset+=local.length+size;
  }
  const end=new Uint8Array(22),e=new DataView(end.buffer);e.setUint32(0,0x06054b50,true);e.setUint16(8,central.length,true);e.setUint16(10,central.length,true);e.setUint32(12,central.reduce((n,c)=>n+c.length,0),true);e.setUint32(16,offset,true);return new Blob([...parts,...central,end],{type:'application/zip'});
 }
 function model3mf(mesh,name='City') {
  const v=mesh.vertices,idx=mesh.indices,escape=s=>String(s).replace(/[<>&"']/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&apos;'}[c]));
- const verts=[];for(let i=0;i<v.length;i+=3)verts.push(`<vertex x="${v[i].toPrecision(9)}" y="${v[i+1].toPrecision(9)}" z="${v[i+2].toPrecision(9)}"/>`);
- const triangles=[];for(let i=0;i<idx.length;i+=3)triangles.push(`<triangle v1="${idx[i]}" v2="${idx[i+1]}" v3="${idx[i+2]}"/>`);
- const xml=`<?xml version="1.0" encoding="UTF-8"?><model unit="millimeter" xml:lang="de-DE" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"><metadata name="Title">${escape(name)}</metadata><metadata name="Description">Map data © OpenStreetMap contributors, ODbL. Terrain: Mapzen / AWS Terrain Tiles. Exact footprint 2.5D relief with tagged roofs. Missing attributes remain estimates; no surveyed architectural model.</metadata><resources><object id="1" type="model"><mesh><vertices>${verts.join('')}</vertices><triangles>${triangles.join('')}</triangles></mesh></object></resources><build><item objectid="1"/></build></model>`;
+ // Keep bounded XML batches; do not allocate one string per face for the whole city.
+ const enc=new TextEncoder(),xml=[],batch=[];function flush(){if(batch.length){xml.push(enc.encode(batch.join('')));batch.length=0;}}
+ batch.push(`<?xml version="1.0" encoding="UTF-8"?><model unit="millimeter" xml:lang="de-DE" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"><metadata name="Title">${escape(name)}</metadata><metadata name="Description">Map data © OpenStreetMap contributors, ODbL. Terrain: Mapzen / AWS Terrain Tiles. Exact footprint 2.5D relief with tagged roofs. Missing attributes remain estimates; no surveyed architectural model.</metadata><resources><object id="1" type="model"><mesh><vertices>`);for(let i=0;i<v.length;i+=3){batch.push(`<vertex x="${v[i].toPrecision(9)}" y="${v[i+1].toPrecision(9)}" z="${v[i+2].toPrecision(9)}"/>`);if(batch.length>=2048)flush();}
+ batch.push('</vertices><triangles>');for(let i=0;i<idx.length;i+=3){batch.push(`<triangle v1="${idx[i]}" v2="${idx[i+1]}" v3="${idx[i+2]}"/>`);if(batch.length>=2048)flush();}batch.push(`</triangles></mesh></object></resources><build><item objectid="1"/></build></model>`);flush();
  return zip({'[Content_Types].xml':'<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/></Types>','_rels/.rels':'<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Target="/3D/3dmodel.model" Id="rel0" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/></Relationships>','3D/3dmodel.model':xml});
 }
-Object.assign(R,{clamp,finite,project,unproject,boundsFor,boundsInfo,validateBounds,normalized,inside,insideRing,ringBox,centroid,parseHeight,roadClass,subtitleForLocation,landmarkPriority,landmarkCategory,parseOSM,seaPolygonsFromCoastlines,sampleTerrain,defaults,paperSizes,palettes,cleanSettings,validateProject,simplify,contours,buildMesh,stl,crc32,zip,model3mf});
+Object.assign(R,{clamp,finite,project,unproject,boundsFor,boundsInfo,validateBounds,normalized,inside,insideRing,ringBox,centroid,parseHeight,roadClass,subtitleForLocation,landmarkPriority,landmarkCategory,parseOSM,seaPolygonsFromCoastlines,sampleTerrain,defaults,paperSizes,palettes,cleanSettings,validateProject,simplify,contours,buildMesh,previewSurface,stl,crc32,zip,model3mf});
 if(typeof module!=='undefined')module.exports=R;
 })(typeof self!=='undefined'?self:globalThis);

@@ -10,7 +10,7 @@ function instance(pin,corrupt=false){let rendered='';const els=Object.fromEntrie
  const globals={window:{},document,fetch,setTimeout:()=>0,URL:{createObjectURL:()=>'',revokeObjectURL(){}},crypto:webcrypto,DecompressionStream,TextEncoder,Response,Blob,Uint8Array,atob,btoa,unescape,encodeURIComponent,console};
  vm.runInNewContext(code,globals);return {load:()=>els.login.onsubmit({preventDefault(){}}),files:()=>globals.window.RELIEF_SOURCE_FILES,html:()=>rendered,status:()=>els.status.textContent};
 }
-test('v16 current preview entry and checksum-verified PIN gate',async()=>{assert.match(await readFile(join(site,'index.html'),'utf8'),/gate-v20\.js\?v=20/);});
+test('v16 current preview entry and checksum-verified PIN gate',async()=>{assert.match(await readFile(join(site,'index.html'),'utf8'),/gate-v21\.js\?v=21/);});
 test('v16 wrong PIN leaves the preview encrypted',async()=>{const x=instance('not-the-pin');await x.load();assert.match(x.status(),/PIN falsch/);assert.equal(x.html(),'');});
 test('v16 preview matches exact current source, including provider and worker and Diagnose button',async()=>{
  const x=instance('2808');await x.load();assert(x.files(),x.status());

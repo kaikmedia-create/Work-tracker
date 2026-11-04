@@ -13,11 +13,11 @@ function instance({pin='2808',fault='',fast=false}={}){
   URL:{createObjectURL:blob=>(downloaded=blob,'blob:test'),revokeObjectURL(){}},setTimeout:fast?(fn,ms)=>setTimeout(fn,Math.min(ms,10)):setTimeout,clearTimeout};
  vm.runInNewContext(code,ctx);return {load:()=>els.login.onsubmit({preventDefault(){}}),html:()=>html,files:()=>ctx.window.RELIEF_SOURCE_FILES,els,calls:()=>calls,downloaded:()=>downloaded};
 }
-test('v19 published entry loads v19 gate',async()=>assert.match(await readFile(join(site,'index.html'),'utf8'),/gate-v20\.js\?v=20/));
+test('v19 published entry loads v19 gate',async()=>assert.match(await readFile(join(site,'index.html'),'utf8'),/gate-v21\.js\?v=21/));
 test('v19 gate reconstructs exact current source and embeds exact worker bytes',async()=>{
  const x=instance();await x.load();assert(x.files(),x.els.status.textContent);
  const prev=JSON.parse(await readFile(join(site,'upgrade20.json'),'utf8')).changes;
- for(const name of ['data.js','app.js','diagnostics.js','index.html','architecture.js','worker.js','core.js','style.css']){const k='public/'+name;if(prev[k])assert.equal(createHash('sha256').update(x.files()[k]).digest('hex'),prev[k].base,name);else assert.equal(x.files()[k],await readFile(join(root,k),'utf8'),name);}
+ for(const name of ['data.js','app.js','diagnostics.js','index.html','architecture.js','worker.js','core.js','style.css']){const k='public/'+name;if(prev[k])assert.equal(createHash('sha256').update(x.files()[k]).digest('hex'),prev[k].base,name);else if(name==='worker.js')assert.equal(createHash('sha256').update(x.files()[k]).digest('hex'),'8036cd26befc19b3b0ff0eaed40d3bf926947ebc9fb94f539373c17ed58e941a');else assert.equal(x.files()[k],await readFile(join(root,k),'utf8'),name);}
  assert(x.html().includes('RELIEF STUDIO <b>19.0</b>'));assert(x.html().includes('<span class="version">19</span>'));assert(x.html().includes('notice-diagnose'));
  const worker=JSON.parse(x.html().match(/window\.RS_WORKER_SOURCE=(.*?);<\/script>/s)[1]);
  assert.equal(worker,x.files()['public/core.js']+'\n'+x.files()['public/architecture.js']+'\n'+x.files()['public/worker.js'].replace("importScripts('core.js','architecture.js');",''));

@@ -11,7 +11,7 @@ function instance(pin,corrupt=false){
  const globals={window:{},document,fetch,setTimeout:()=>0,URL:{createObjectURL:blob=>(downloaded=blob,'blob:test'),revokeObjectURL(){}},crypto:webcrypto,DecompressionStream,TextEncoder,Response,Blob,Uint8Array,atob,btoa,unescape,encodeURIComponent,console};
  vm.runInNewContext(code,globals);return {load:()=>els.login.onsubmit({preventDefault(){}}),files:()=>globals.window.RELIEF_SOURCE_FILES,html:()=>rendered,status:()=>els.status.textContent,diagnostic:()=>els['gate-diagnose'],downloaded:()=>downloaded};
 }
-test('v15 remains available while v15 is the published entry',async()=>assert((await readFile(join(site,'index.html'),'utf8')).includes('gate-v20.js?v=20')));
+test('v15 remains available while v15 is the published entry',async()=>assert((await readFile(join(site,'index.html'),'utf8')).includes('gate-v21.js?v=21')));
 test('v15 wrong PIN cannot expose the application',async()=>{const r=instance('0000');await r.load();assert.match(r.status(),/PIN falsch/);assert.equal(r.html(),'');});
 test('v15 decrypted app and worker match all tested browser source bytes',async()=>{
  const r=instance('2808');await r.load();assert(r.files(),r.status());
@@ -20,7 +20,7 @@ test('v15 decrypted app and worker match all tested browser source bytes',async(
   const key='public/'+name;
   if(key==='public/architecture.js')assert.equal(createHash('sha256').update(r.files()[key]).digest('hex'),'dc9c3e213090fadc30d60700687111ba69f3d523cd8fbb9f2a837dfcb84e17e4','historical architecture');
   else if(previous[key])assert.equal(createHash('sha256').update(r.files()[key]).digest('hex'),previous[key].base,'historical v15 '+name);
-  else if(key==='public/core.js')assert.equal(createHash('sha256').update(r.files()[key]).digest('hex'),'714dca6989540620530dd83e46e2a890496845fad499eff717bb8f238d5791a0',name);else if(key==='public/worker.js')assert.equal(createHash('sha256').update(r.files()[key]).digest('hex'),'d94442ddb4e08b23f8f9a62965be3b53d8801ab023aaf9a738dfa9623672b4e2',name);else assert.equal(r.files()[key],await readFile(join(root,'public',name),'utf8'),name);
+  else if(key==='public/viewer.js')assert.equal(createHash('sha256').update(r.files()[key]).digest('hex'),'c644aef7b7a4a7c97e9400811f2650ae4f43ce2d6ef0ce5115a73043ec14a295',name);else if(key==='public/core.js')assert.equal(createHash('sha256').update(r.files()[key]).digest('hex'),'714dca6989540620530dd83e46e2a890496845fad499eff717bb8f238d5791a0',name);else if(key==='public/worker.js')assert.equal(createHash('sha256').update(r.files()[key]).digest('hex'),'d94442ddb4e08b23f8f9a62965be3b53d8801ab023aaf9a738dfa9623672b4e2',name);else assert.equal(r.files()[key],await readFile(join(root,'public',name),'utf8'),name);
  }
  assert(r.html().includes('notice-diagnose'));assert(r.html().includes('function createDiagnostics'));
  assert(r.html().includes('retriangulateZeroArea'));assert(r.html().includes('geometryKernelVersion:15'));
