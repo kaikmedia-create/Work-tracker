@@ -1,0 +1,42 @@
+name: Verify printable streets and paths
+on:
+  push:
+    branches: [qa/printable-streets-20]
+permissions:
+  contents: write
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: review
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: 14188ac7853d56c72330db1c680302c79bfcc2c1
+          path: candidate
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Assemble source and compare locally verified geometry and UI checksums
+        run: |
+          cd candidate/relief-studio/source
+          node tools/prepare_release19.mjs
+          cd ../../..
+          python3 review/.road-review/assemble.py candidate/relief-studio
+          cp review/.road-review/RELEASE-NOTES-20.md candidate/relief-studio/
+          cd candidate
+          git add -- relief-studio/
+      - name: Run full suite, physical road profile and exact encrypted gate tests
+        run: |
+          cd candidate/relief-studio/source
+          npm test
+      - name: Push only tested files to a dedicated feature branch
+        run: |
+          cd candidate
+          git config user.name 'Relief Studio QA'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Relief Studio 20: printable raised or engraved streets and paths with a shared watertight terrain mesh'
+          git push origin HEAD:refs/heads/feature/verified-road-relief-20
