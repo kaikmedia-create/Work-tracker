@@ -11,7 +11,7 @@
 <body data-mode="choose">
 <header class="topbar">
 <a aria-label="Relief Studio Startseite" class="brand" href="#" id="home"><img alt="" height="36" src="favicon.svg" width="36"/><span>Relief<span class="brand-light">Studio</span><small>RELIEF MAP ATELIER</small></span></a>
-<div class="project-state"><span class="dot"></span><span id="project-state">Neues Projekt</span><span class="version">22</span></div>
+<div class="project-state"><span class="dot"></span><span id="project-state">Neues Projekt</span><span class="version">23</span></div>
 <nav aria-label="Projektaktionen" class="header-actions"><button class="ghost" hidden="" id="switch-mode">Modus wechseln</button><button class="ghost" id="new-project">＋ Neu</button><button class="ghost" id="open-project">Öffnen</button><button class="ghost" disabled="" hidden="" id="save-project">Speichern</button><button class="primary" hidden="" id="export-top">Exportieren <span>↗</span></button></nav>
 </header>
 <div class="access-note" hidden="" id="access-note"></div>
@@ -51,6 +51,7 @@
 <div class="field-grid"><label>Rahmenbreite<span class="unit-input"><input data-setting="frame" id="frame-width" min="0" max="15" step="0.5" type="number"/><em>mm</em></span></label></div>
 <div class="section-title"><h3>Straßen und Wege</h3><span class="badge">STL + 3MF</span></div>
 <label for="road-mode">Straßenprofil<select id="road-mode" data-setting="roadMode"><option value="raised">Erhaben</option><option value="engraved">Eingraviert</option><option value="off">Aus</option></select></label>
+<label for="street-curve">Straßenverlauf<select id="street-curve" data-setting="streetCurve"><option value="mapped">Kartierte Stützpunkte</option><option value="soft">Weiche Kurven</option><option value="fine">Weiche Kurven · fein</option></select></label>
 <div class="control"><label for="road-relief">Profilhöhe / -tiefe <output data-output="roadRelief"></output></label><input id="road-relief" data-setting="roadRelief" type="range" min="0" max="1" step="0.05"/><small>Modellmaß in mm. Hauptstraßen sind breiter und höher als Nebenstraßen und Fußwege. Bei Gravur bezeichnet der Wert die Tiefe. Ändern erfordert keinen neuen Kartenabruf.</small></div>
 <div class="section-title"><h3>Gewässer und Grünflächen</h3></div>
 <label>Gewässerprofil<select id="water-mode" data-setting="waterMode"><option value="engraved">Eingraviert</option><option value="raised">Erhaben</option><option value="flat">Flach</option></select></label>
@@ -155,7 +156,7 @@
 </div>
 <div class="stage-bottom"><div class="stat"><span id="metric-a-label">AUSSCHNITT</span><strong id="metric-a">3,20 × 3,00 km</strong></div><div class="stat"><span id="metric-b-label">MODELLGRÖẞE INKL. RAHMEN</span><strong id="metric-b">208 × 196 mm</strong></div><div class="stat"><span id="metric-c-label">DATENSTATUS</span><strong id="metric-c">Noch nicht geladen</strong></div><button class="quality-button" id="quality-toggle">Datenqualität <span>↗</span></button></div>
 <div class="quality-panel" hidden="" id="quality-panel"><h3>Was im Modell steckt.</h3><div id="quality-content"><p>Die Datenqualität wird nach dem Laden angezeigt.</p></div></div>
-<footer class="main-footer"><span>RELIEF STUDIO <b>22.0</b></span><span>Echte Geografie. Bewusste Gestaltung.</span><button class="text-button" id="help">Hilfe &amp; Quellen</button></footer>
+<footer class="main-footer"><span>RELIEF STUDIO <b>23.0</b></span><span>Echte Geografie. Bewusste Gestaltung.</span><button class="text-button" id="help">Hilfe &amp; Quellen</button></footer>
 </main>
 </div>
 <div aria-live="polite" class="toast" hidden="" id="toast" role="status"></div>

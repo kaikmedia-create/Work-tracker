@@ -1,13 +1,13 @@
 {
-  "version": "22.0.0",
+  "version": "23.0.0",
   "account": "kaikmedia-create",
   "repository": "kaikmedia-create/Work-tracker",
   "folder": "relief-studio",
   "target": "github-pages",
   "status": "requires-deployment-check",
-  "base_commit": "1cabc98e666d6312fe05eb80e7e68f7ebfad999e",
+  "base_commit": "629115830ba2908c687b4d7cd4d7f7ebe66fb1c5",
   "entry": "index.html",
-  "gate": "gate-v22.js",
+  "gate": "gate-v23.js",
   "base_package": "bundle10.json",
   "updates": [
     "upgrade11.json",
@@ -22,12 +22,13 @@
     "upgrade19.json",
     "upgrade20.json",
     "upgrade21.json",
-    "upgrade22.json"
+    "upgrade22.json",
+    "upgrade23.json"
   ],
-  "source_in_repository": "Full geometry on the GPU, locally rendered HD software stills.",
+  "source_in_repository": "Physical curved road contours shared by HD preview and print formats.",
   "checks": {
     "runner": "npm test",
-    "feature": "tests/hd22.test.mjs"
+    "feature": "tests/road-curves23.test.mjs"
   },
   "gating": "static preview PIN; not server-side access control",
   "code_commit": null,

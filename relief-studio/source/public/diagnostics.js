@@ -22,7 +22,7 @@ function explainFailure(input,stage,settings={}){
  const hint=code==='RATE_LIMIT'?(wait===null?'Die angezeigte Sperrfrist abwarten.':`Nach ${wait} s erneut versuchen.`):code==='IMPORT_JSON'?'Eine unveränderte Projekt- oder Diagnose-JSON öffnen.':code==='IMPORT_NO_DATA'?'Eine Projektdatei mit Kartendaten öffnen oder den Ausschnitt neu laden.':phase==='3D-Geometrie'?'Die vorhandenen Kartendaten müssen nicht neu geladen werden. Diagnose speichern.':phase==='Geländedaten'?'Erneut versuchen; fertige Kartenpakete bleiben nutzbar.':phase==='Kartendaten'?'Erneut versuchen; vollständig geladene Pakete werden wiederverwendet.':phase==='Import'?'Dateiformat und betroffenen Wert prüfen.':phase.startsWith('Export')?'Projekt sichern und Diagnose herunterladen.':'Details über „Diagnose“ speichern.';
  return {phase,code,hint,facts};
 }
-function createDiagnostics({now=()=>Date.now(),release='22.0.0'}={}){
+function createDiagnostics({now=()=>Date.now(),release='23.0.0'}={}){
  const events=[],errors=[];let provider=()=>({}),latest=null,sequence=0,run=0;let operation=null;
  const redact=value=>String(value??'').replace(/https?:\/\/[^\s"'<>]+/g,url=>url.replace(/[?#].*$/,''))
   .replace(/(\b(?:password|passwd|pin|token|api[_-]?key|authorization|cookie|secret)\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,;&]+)/gi,'$1[entfernt]');

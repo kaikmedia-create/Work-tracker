@@ -144,7 +144,7 @@ function labels(){
  updateStepUI();
 
 }
-function controls(){$('water-profile').disabled=settings.waterMode==='flat';$('road-relief').disabled=settings.roadMode==='off';all('[data-setting]').forEach(e=>{const v=settings[e.dataset.setting];if(e.type==='checkbox')e.checked=!!v;else e.value=String(v);});labels();}
+function controls(){$('water-profile').disabled=settings.waterMode==='flat';$('street-curve').disabled=settings.roadMode==='off';$('road-relief').disabled=settings.roadMode==='off';all('[data-setting]').forEach(e=>{const v=settings[e.dataset.setting];if(e.type==='checkbox')e.checked=!!v;else e.value=String(v);});labels();}
 function updateBounds(fit=false){bounds=R.boundsFor(settings.lon,settings.lat,settings.widthKm,settings.heightKm);map.setBounds(bounds,fit);labels();persist();}
 const map=new R.AreaMap($('map-canvas'),b=>{bounds=b;const i=R.boundsInfo(b);settings.lon=+i.lon.toFixed(6);settings.lat=+i.lat.toFixed(6);settings.widthKm=+(i.w/1000).toFixed(3);settings.heightKm=+(i.h/1000).toFixed(3);controls();persist();map.drawMode=false;$('draw-area').classList.remove('selected');if(settings.autoSubtitle)resolveRegion();});map.limitMode=settings.mode;map.onError=e=>notify(e.message||String(e),'error',null,e,{stage:'Kartenansicht'});
 function quality(){
@@ -226,7 +226,7 @@ async function build(signal){
    worker.postMessage({id,data:source,settings:inputSettings});
   });}else{if(source.buildings.length>1500)throw Object.assign(Error('Dieser Browser erlaubt keinen 3D-Hintergrundprozess. Projekt speichern und in einem Browser mit Web-Worker-Unterstützung öffnen.'),{code:'WORKER_UNAVAILABLE'});await nextFrame();result=R.buildMesh(source,inputSettings);if(result.indices.length>24000)result.preview=R.previewSurface(result);}
   if(id!==buildId||source!==data||signal?.aborted)return false;
-  if(result.roadProfile){const r=result.roadProfile;R.diagnostics.event('Straßenrelief',{status:'done',mode:r.mode,detail:`${r.lines} Linien; ${r.changedVertices} Punkte; maximal ${r.maxOffsetMm.toFixed(3)} mm`,count:r.addedTriangles});}
+  if(result.roadProfile){const r=result.roadProfile;R.diagnostics.event('Straßenrelief',{status:'done',mode:r.mode,detail:`${r.lines} Linien; ${r.contourVertices||0} Konturpunkte; ${r.changedVertices} Punkte; maximal ${r.maxOffsetMm.toFixed(3)} mm`,count:r.addedTriangles});}
   if(result.surfaceProfile){const f=result.surfaceProfile;R.diagnostics.event('Gewässer und Grünflächen',{status:'done',detail:`${f.riverLines} Gewässerlinien, ${source.water.length} Wasserflächen, ${source.parks.length} Grünflächen; ${f.waterMode}, ${f.waterDepth} mm; Grün ${f.greenRelief} mm`});}
   mesh=result;ensureViewer();viewer?.setMesh(mesh,settings);$('model-empty').hidden=!!viewer;quality();
   R.diagnostics.event('3D-Geometrie',{status:'done',buildId:id,count:result.indices.length/3,durationMs:Date.now()-startedAt});return true;
@@ -362,7 +362,7 @@ all('[data-setting]').forEach(el=>el.addEventListener(el.type==='text'||el.type=
  if(k==='subtitle'){settings.autoSubtitle=false;document.querySelector('[data-setting=autoSubtitle]').checked=false;$('region-status').textContent='Manuell eingetragen. Automatik über die Checkbox wieder einschalten.';}
  if(k==='autoSubtitle'&&settings.autoSubtitle){settings.subtitle=R.subtitleForLocation(settings.region,settings.countryCode,settings.countryName);resolveRegion();}
 
- if(['lat','lon','widthKm','heightKm'].includes(k)){updateBounds();if(['lat','lon'].includes(k)&&settings.autoSubtitle)resolveRegion();}else{persist();if(['modelWidth','base','terrainFactor','buildingFactor','landmarkFactor','landmarkWidth','frame','waterDepth','waterMode','greenRelief','resolution','major','secondary','local','paths','roadRelief','roadMode'].includes(k))scheduleBuild();schedulePreview();}
+ if(['lat','lon','widthKm','heightKm'].includes(k)){updateBounds();if(['lat','lon'].includes(k)&&settings.autoSubtitle)resolveRegion();}else{persist();if(['modelWidth','base','terrainFactor','buildingFactor','landmarkFactor','landmarkWidth','frame','waterDepth','waterMode','greenRelief','resolution','major','secondary','local','paths','roadRelief','roadMode','streetCurve'].includes(k))scheduleBuild();schedulePreview();}
  if(el.type!=='text')controls();else labels();if(k==='showAttribution'){clearTimeout(previewTimer);if(currentView==='poster')preview();if(!settings.showAttribution)notify('OpenStreetMap-Quellenzeile ist nur für deinen privaten Entwurf ausgeblendet. Beim Teilen oder Drucken für andere muss die Quellenangabe wieder sichtbar sein.','warning');}if(['contours','hillshade'].includes(k)&&needsTerrain())explain(commonReason());
 }));
 all('[data-step]').forEach(b=>b.addEventListener('click',()=>{panel(flow()[Number(b.dataset.step)]);if(currentPanel!=='place'&&commonReason())explain(commonReason());}));all('[data-view]').forEach(b=>b.addEventListener('click',()=>view(b.dataset.view)));all('[data-format]').forEach(b=>b.addEventListener('click',()=>{settings.format=b.dataset.format;controls();persist();}));
@@ -428,5 +428,5 @@ window.addEventListener('offline',()=>notify('Du bist offline. Gespeicherte Proj
 
 if(!globalThis.RELIEF_STATIC_PREVIEW&&location.protocol!=='file:')fetch('api/status',{signal:AbortSignal.timeout(2500),headers:{Accept:'application/json'}}).then(r=>r.ok?r.json():null).then(j=>{if(j?.application==='relief-studio'&&j.server===true){R.server=true;$('logout-form').hidden=false;}}).catch(()=>{});
 // Diagnostics are local only. The interface exposes no credentials or remote administration.
-Object.defineProperty(globalThis,'ReliefStudio',{value:{get settings(){return {...settings};},get data(){return data;},get mesh(){return mesh;},get building(){return building;},view,exportPoster:()=>R.exportPoster(data,settings),get mode(){return settings.mode;},get started(){return started;},get panel(){return currentPanel;},version:'22.0.0'}});
+Object.defineProperty(globalThis,'ReliefStudio',{value:{get settings(){return {...settings};},get data(){return data;},get mesh(){return mesh;},get building(){return building;},view,exportPoster:()=>R.exportPoster(data,settings),get mode(){return settings.mode;},get started(){return started;},get panel(){return currentPanel;},version:'23.0.0'}});
 })(globalThis.RS);
