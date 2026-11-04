@@ -1,0 +1,10 @@
+{
+  "release": "23.0.0",
+  "sourceCommit": "d2ab12946537698b010c354ffced26a9a98781a8",
+  "ciRun": 41835218588,
+  "tests": {"passed": 267, "failed": 0, "skipped": 0},
+  "sample": {"location": "Weinheim", "extentKm": [3.2, 3.0], "modelWidthMm": 200, "source": "Private previously saved project. Not uploaded to the repository; no fresh map download.", "profile": "raised", "streetCurve": "soft"},
+  "syntheticStraightEdge": {"method": "Synthetic diagonal major road. Intersect the printed mesh at 25% of its profile height; compare perpendicular distances to its centerline inside the central 50 mm. Max minus min, not a manufacturing tolerance.", "oldSpreadMm": 0.02805491628524337, "newSpreadMm": 3.294056994951333e-7, "testToleranceMm": 0.01},
+  "browserAndFormats": {"browser": "Headless Chromium, software preview", "exportedWithDownloadButtons": ["STL", "3MF"], "triangles": 2425934, "weldedVertices": 1212969, "connectedComponents": 1, "invalidEdgePairs": 0, "zeroAreaFaces": 0, "identicalTriangleCoordinates": true, "stlBytes": 121296784, "threeMfBytes": 181307895},
+  "limitations": "Geometry improvement, not an edit to source map coordinates. Protected building contacts and thin slivers are not subdivided. Additional vertices increase file size; no performance guarantee or physical print test."
+}
