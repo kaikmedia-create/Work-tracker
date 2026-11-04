@@ -1,0 +1,11 @@
+{
+  "release": "27.0.0",
+  "testedSource": "ba75f6439666e650d2a57e2269d6d40daa7a6f83",
+  "ciRun": 41848149953,
+  "suite": {"passed": 326, "failed": 0, "skipped": 0},
+  "input": {"source":"Saved private Weinheim diagnostic, unchanged settings; no upload to the repository, no new OSM download.","extentKm":[2.258,2.117],"modelWidthMm":200,"terrainFactor":2.4,"terrainSmoothing":"strong"},
+  "church": {"osmId":"way/274663761","inputOutlineDistinctVertices":57,"inputHeightM":20,"inputHeightWasEstimated":true,"inputRoofTagsOrLinkedParts":false,"output":"Reference roof surfaces with reconstructed corner tower, not a flat 20 m extrusion. The 47 m roof peak is approximate; no modeled weathercock or facade survey. See LANDMARK-SOURCES.md."},
+  "browser": {"engine":"Chromium, WebGL disabled, self-contained v27 preview, actual project import and STL download action","uncaughtErrors":0,"buildingsAndWalls":4226,"omitted":0,"referenceRoofModels":6,"additionalHeightRasterModels":6,"objectsWithoutRoofTagOrReference":3756,"filename":"weinheim.stl"},
+  "independentStlCheck":{"bytes":89034784,"triangles":1780694,"weldedVertices":890349,"connectedComponents":1,"invalidEdgePairs":0,"sameDirectionPairs":0,"zeroAreaFaces":0,"sha256":"ee5cf13e58b480a404636fce40684cf04b1d41c428f28d99cac5f0361164938d"},
+  "coverage":"Generic OSM assembly handling and geographic raster matching. Built-in high-detail evidence is regional, not worldwide. Worldwide accuracy depends on suitable source data. Digital export only; no physical print."
+}
