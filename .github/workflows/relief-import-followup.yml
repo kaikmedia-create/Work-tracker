@@ -1,0 +1,49 @@
+name: Verify import diagnostics without stale project context
+on:
+  push:
+    branches: ['qa/relief19-import-scope']
+permissions:
+  contents: write
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+    - name: Generate and verify the release delta
+      run: |
+        set -eu
+        cp -r .qa19 "$RUNNER_TEMP/patch"
+        git switch --detach 94429090e821de03f8f8d1583d46776ed35b231f
+        git worktree add -q --detach "$RUNNER_TEMP/prev" 6b69f8b58dceeb510f10a9935aeab5c2216b5402
+        node "$RUNNER_TEMP/prev/relief-studio/source/tools/prepare_release18.mjs"
+        python "$RUNNER_TEMP/patch/import-followup.py" "$RUNNER_TEMP/prev/relief-studio/source/public/diagnostics.js"
+        cp "$RUNNER_TEMP/patch/extra-errors.py" relief-studio/source/tests/diagnostic19_details_ui.py
+        git add relief-studio/source/public/diagnostics.js relief-studio/source/tests/diagnose19.test.mjs relief-studio/source/tests/diagnostic19_details_ui.py relief-studio/upgrade19.json relief-studio/RELEASE-NOTES-19.md relief-studio/reports/v19/acceptance.json
+    - name: Run full suite and all six error-dialog to JSON tests
+      run: |
+        set -euo pipefail
+        cd relief-studio/source
+        npm test > "$RUNNER_TEMP/node.log" || { grep -A12 '^not ok' "$RUNNER_TEMP/node.log"; exit 1; }; tail -10 "$RUNNER_TEMP/node.log"
+        python -m venv "$RUNNER_TEMP/testvenv"; "$RUNNER_TEMP/testvenv/bin/pip" -q install 'playwright==1.55.0'
+        export CHROMIUM=$(command -v google-chrome)
+        "$RUNNER_TEMP/testvenv/bin/python" tests/diagnostic19_ui.py | tee "$RUNNER_TEMP/error-ui.json"
+        "$RUNNER_TEMP/testvenv/bin/python" tests/diagnostic19_details_ui.py | tee "$RUNNER_TEMP/error-details.json"
+    - name: Publish tested candidate to review branch only
+      run: |
+        git config user.name 'Relief Studio QA'; git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+        git commit -m 'Report the actual rejected height or raster values without attaching the previous project; test six downloadable errors'
+        git push origin HEAD:refs/heads/qa/relief19-import-verified
+    - uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: diagnostic-acceptance
+        path: |
+          ${{ runner.temp }}/node.log
+          ${{ runner.temp }}/error-ui.json
+          ${{ runner.temp }}/error-details.json
