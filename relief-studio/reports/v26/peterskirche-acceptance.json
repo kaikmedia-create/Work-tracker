@@ -1,0 +1,12 @@
+{
+  "release":"26.0.0",
+  "testedSource":"69fb62b61ce3d838745abd59e29895f6881bd4e9",
+  "ciRun":41846726000,
+  "suite":{"passed":312,"failed":0,"skipped":0},
+  "sample":{"source":"Two previously saved private Weinheim projects; not included in this repository. No new OSM query needed.","recognition":"way/274663761 in both projects: 57 distinct outline vertices, no linked parts or roof type, estimated 20 m. The footprint was not a replacement rectangle."},
+  "publicSources":{"attribution":"Datenquelle: LGL, www.lgl-bw.de; nDOM1 and LoD2, tile 32/475/5488. Clipped, resampled and quantized. Data licence Germany – attribution 2.0. OSM footprints © OpenStreetMap contributors, ODbL.","record":"DEBW_001000rOZoG","shapeIntersectionFractionOfOsm":0.993,"sampleDimensions":[28,27],"highestResampledHeightAboveGroundM":43.25,"regionalRecords":17,"noClaimOfWeathercockOrFacadeDetail":true},
+  "browserExport":{"browser":"Headless Chromium, WebGL disabled; actual preview application with inline worker, user project imported, primary STL download action","citySizeKm":[2.258,2.117],"mapWidthMm":200,"measuredRoofMatches":12,"objectsBuilt":4226,"missed":0,"pageErrors":0,"filename":"weinheim.stl","bytes":90278884},
+  "independentStlAudit":{"triangles":1805576,"vertices":902790,"connectedComponents":1,"invalidEdges":0,"sameDirectionEdgePairs":0,"zeroAreaTriangles":0,"sha256":"17d18493b6d42134bc53359a81c2d0fe5d0af56866cced50d5cd880b2b834100"},
+  "secondReplay":{"citySizeKm":[3.2,3.0],"measuredRoofMatches":12,"triangles":2319692,"missed":0,"mode":"geometry engine replay from stored data"},
+  "coverage":"Generic mapping and roof-pack matching tested on synthetic geometries in three other coordinate regions. Verified real public roof surface coverage only for the bundled Weinheim tile. No private project geometry, credentials or physical print included."
+}
