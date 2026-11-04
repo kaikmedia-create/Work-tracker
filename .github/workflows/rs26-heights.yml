@@ -1,0 +1,37 @@
+name: Check coverage of independent height evidence
+on:
+  push:
+    branches: [qa/landmark-surfaces-26]
+    paths: [.github/workflows/rs26-heights.yml]
+permissions: {contents: read}
+jobs:
+  lookup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Resolve LGL download index and retrieve elevation sample
+        run: |
+          mkdir public-source
+          cd public-source
+          python3 - <<'PY'
+          import urllib.request as u,re,json
+          from urllib.parse import urljoin
+          base='https://opengeodata.lgl-bw.de/'
+          def get(url):
+           with u.urlopen(url,timeout=25) as f:return f.read(20000000)
+          from pathlib import Path
+          h=get(base).decode(); scripts=re.findall(r'<script[^>]+src="([^"]+)"',h); print(scripts)
+          for s in scripts:
+           if 'main' not in s:continue
+           j=get(urljoin(base,s)).decode();Path('main.js').write_text(j)
+           for m in re.finditer(r'(?i)ndom|\.geojson|assets/config|/data/|assets/data',j):
+            print(j[max(0,m.start()-100):m.start()+130][:230])
+          for name in ['ndom1/ndom1_32_475_5488_2_bw.zip','ndom/ndom1_32_475_5488_2_bw.zip','ndom1/ndom1_32_475_5488_2_bw.tif','ndom/ndom_32_475_5488_2_bw.zip']:
+           try:
+            blob=get(base+'data/'+name)
+            if blob[:2] in [b'PK',b'II',b'MM']:
+             Path(name.split('/')[-1]).write_bytes(blob);Path('source-url.txt').write_text(base+'data/'+name);print('FOUND',name);break
+           except Exception as e:print(name,str(e))
+          PY
+      - uses: actions/upload-artifact@v4
+        with: {name: height-source, path: public-source, retention-days: 1}
