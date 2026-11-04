@@ -1,0 +1,33 @@
+name: Browser acceptance for worldwide building detail
+on:
+  push:
+    branches: [qa/world-building-details-28]
+    paths: ['.github/workflows/rs28-browser.yml']
+permissions: {actions: read, contents: read}
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/download-artifact@v4
+        with: {run-id: 41853795992, name: candidate, path: candidate, github-token: '${{ github.token }}'}
+      - uses: actions/download-artifact@v4
+        with: {run-id: 41852419235, name: public-world-inputs, path: inputs, github-token: '${{ github.token }}'}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - run: |
+          tar xzf candidate/candidate.tgz
+          npm install --no-audit --no-fund --ignore-scripts puppeteer-core@24.9.0
+          cat > prep.mjs <<'JS'
+          import fs from 'node:fs';import './relief-studio/source/public/core.js';import './relief-studio/source/public/architecture.js';const R=globalThis.RS;const raw=JSON.parse(fs.readFileSync('inputs/osm-amsterdam.json')),b=raw.bounds,bounds=[b.minlon,b.minlat,b.maxlon,b.maxlat],data=R.parseOSM(raw,bounds);Object.assign(data,{version:2,coastlineVersion:8,realData:true,bounds,terrain:{cols:2,rows:2,values:[0,0,0,0]},water:[],parks:[],roads:[],landmarks:[]});fs.writeFileSync('amsterdam.json',JSON.stringify({version:3,settings:{...R.defaults,title:'Amsterdam',mode:'model',resolution:65,modelWidth:120,lon:4.8908,lat:52.3731,widthKm:.13,heightKm:.21,frame:0},data}));
+          JS
+          node prep.mjs
+          python -m http.server 8765 >/tmp/http.log 2>&1 &
+          cat > browser.mjs <<'JS'
+          import puppeteer from 'puppeteer-core';import fs from 'node:fs';const br=await puppeteer.launch({executablePath:'/usr/bin/google-chrome',headless:true,args:['--no-sandbox','--disable-webgl','--disable-dev-shm-usage']});const page=await br.newPage(),errors=[];page.on('pageerror',e=>{errors.push(String(e));console.log(String(e));});
+          try{await page.goto('http://localhost:8765/relief-studio/');await page.type('#pin','2808');await page.click('#submit');await page.waitForFunction('!!window.ReliefStudio',{timeout:60000});const upload=await page.$('#project-file');await upload.uploadFile('amsterdam.json');await page.waitForFunction('!!ReliefStudio.mesh&&!ReliefStudio.building',{timeout:65000});const before=await page.evaluate(()=>ReliefStudio.mesh.zmax);await page.evaluate(()=>document.querySelector('#world-refresh').click());await page.waitForFunction('!document.querySelector("#world-refresh").disabled && !ReliefStudio.building && ReliefStudio.data.worldCheck',{timeout:65000});const out=await page.evaluate(()=>({version:ReliefStudio.version,result:ReliefStudio.data.worldCheck,annotated:ReliefStudio.data.buildings.filter(x=>x.worldSource).length,triangles:ReliefStudio.mesh?.indices.length/3,zmax:ReliefStudio.mesh?.zmax}));out.beforeZmax=before;out.errors=errors;console.log('ACTUAL_BROWSER_RESULT',JSON.stringify(out));fs.writeFileSync('browser-result.json',JSON.stringify(out,null,2));if(out.version!=='28.0.0'||out.result.status!=='ok'||!out.triangles||out.errors.length)throw Error('Live browser acceptance incomplete: '+JSON.stringify(out));}finally{await br.close();}
+          JS
+          node browser.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: browser-result, path: browser-result.json, retention-days: 1, if-no-files-found: ignore}
