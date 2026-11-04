@@ -475,8 +475,8 @@ Object.defineProperty(globalThis,'ReliefStudio',{value:{get settings(){return {.
   if (!media.matches || loading) return;
   loading = true;
   const base = new URL(window.RELIEF_STATIC_PREVIEW ? './source/public/' : './', document.baseURI);
-  import(new URL('phone-workspace.js?v=4b41c8bfea1b',base).href).then(module => {
-   module.attachPhoneWorkspace(media,new URL('phone-workspace.css?v=4b41c8bfea1b',base).href);
+  import(new URL('phone-workspace.js?v=c274a354aeae',base).href).then(module => {
+   module.attachPhoneWorkspace(media,new URL('phone-workspace.css?v=c274a354aeae',base).href);
    media.removeEventListener('change',activate);
   }).catch(() => { loading = false; }); // the existing responsive UI remains usable
  }
