@@ -1,0 +1,11 @@
+{
+  "release": "25.0.0",
+  "testedSource": "82e6abb6803e426f6ff0773351be03f26cee316e",
+  "ciRun": 41841094010,
+  "suite": {"passed":294,"failed":0,"skipped":0},
+  "input": {"source":"Private previously saved Weinheim diagnostic; no new network fetch", "extentKm":[2.258,2.117],"mapWidthMm":200,"frameMm":6.5,"terrainFactor":2.4,"smoothing":"strong","buildingAndWallObjects":4226},
+  "reproduction": {"release":"24.0.0","code":"GEOMETRY_SEAM","badEdges":3},
+  "corrected": {"verticalSeamSplits":1,"omittedBuildingAndWallObjects":0,"settingsUnchanged":true,"browser":"Headless Chromium, WebGL disabled","downloadButton":"STL","suggestedFilename":"weinheim.stl","uncaughtBrowserErrors":0},
+  "independentBinaryStlCheck": {"sizeBytes":88095384,"triangles":1761906,"connectedComponents":1,"invalidEdges":0,"degenerateTriangles":0,"bboxMm":[213.0,200.5511932373047,63.690799713134766],"sha256":"a149f461acb05b631c97011e4c0da53ffd4423703b70a124e3025fba51ed73f3"},
+  "limitations":"Digital geometry validation. No physical print. No private project geometry included."
+}
