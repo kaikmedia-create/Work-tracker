@@ -456,7 +456,7 @@ function buildArchitecture(data,settings,repairs=[],attempt=0){
  const s=R.cleanSettings(settings),info=R.boundsInfo(data.bounds),w=s.modelWidth,h=w*info.h/info.w,scale=w/info.w;
  // More terrain samples cannot recover missing DEM data. Buildings no longer
  // depend on this terrain resolution at all.
- const n=Math.min(s.resolution,Math.max(65,Math.min(257,data.terrain.cols+16)));
+ const n=Math.min(s.resolution,Math.max(65,Math.min(257,(data.terrain.nativeCols?Math.round(data.terrain.nativeCols*1.20):data.terrain.cols)+16)));
  const terrain=raster({...data,buildings:[]},{...s,resolution:n,buildingFactor:0,landmarkFactor:1,landmarkWidth:1});
  let low=Infinity;for(const z of data.terrain.values)low=Math.min(low,z);
  const terrainAt=(u,v)=>s.base+Math.max(0,R.sampleTerrain(data.terrain,u,v)-low)*scale*s.terrainFactor;
@@ -670,10 +670,28 @@ function addStreetRelief(m,roads,s,w,h,scale){
  const out=new Uint32Array(t.length-start*3+faces.length);let off=0;for(let i=0;i<t.length;i+=3)if(!active[i/3]){out[off++]=t[i];out[off++]=t[i+1];out[off++]=t[i+2];}out.set(faces,off);
  m.indices=out;m.vertices=new Float32Array(v);m.classes=new Uint8Array(cl);stats.addedTriangles=faces.length/3-start;return m;
 }
+// B-spline filtering on the DEM before any road/roof construction. Extrapolate
+// linearly at boundaries to preserve planar slopes; never change the source grid.
+function smoothTerrainGrid(grid,mode){
+ if(mode==='off'||grid.cols<3||grid.rows<3)return grid;
+ const {cols:n,rows:m,values:a}=grid;let lo=Infinity,hi=-Infinity;for(const z of a){lo=Math.min(lo,z);hi=Math.max(hi,z);}if(lo===hi)return grid;
+ const N=Math.min(1025,2*n-1),M=Math.min(1025,2*m-1);
+ function line(src,off,stride,len,u){const i=Math.floor(u),t=u-i,q=1-t;
+  const at=j=>j<0?src[off]+j*(src[off+stride]-src[off]):j>=len?src[off+(len-1)*stride]+(j-len+1)*(src[off+(len-1)*stride]-src[off+(len-2)*stride]):src[off+j*stride];
+  return (q*q*q*at(i-1)+(4-6*t*t+3*t*t*t)*at(i)+(1+3*t+3*t*t-3*t*t*t)*at(i+1)+t*t*t*at(i+2))/6;
+ }
+ function resample(src,n,m,N,M){const tmp=new Float64Array(N*m),out=new Float64Array(N*M);
+  for(let y=0;y<m;y++)for(let x=0;x<N;x++)tmp[y*N+x]=line(src,y*n,1,n,x*(n-1)/(N-1));
+  for(let x=0;x<N;x++)for(let y=0;y<M;y++)out[y*N+x]=Math.min(hi,Math.max(lo,line(tmp,x,N,m,y*(m-1)/(M-1))));return out;
+ }
+ const src=mode==='strong'?resample(resample(a,n,m,n,m),n,m,n,m):a;
+ return {...grid,cols:N,rows:M,values:resample(src,n,m,N,M),nativeCols:n};
+}
 function buildWithStreets(data,input){const s=R.cleanSettings(input),info=R.boundsInfo(data.bounds),w=s.modelWidth,h=w*info.h/info.w;
- const mesh=buildArchitecture({...data,roads:[]},{...s,roadRelief:0});
+ const ground=s.terrainFactor>0?smoothTerrainGrid(data.terrain,s.terrainSmooth):data.terrain;
+ const mesh=buildArchitecture({...data,terrain:ground,roads:[]},{...s,roadRelief:0});
  return addStreetRelief(mesh,data.roads,s,w,h,w/info.w);
 }
 
-Object.assign(R,{buildRasterMesh:raster,buildMesh:buildWithStreets,architecture:{roadCurve,roadAnchors,decompose,roofSpec,roofFrame,roofPieces,half,overlay,stitchSurface,buildArchitecture}});
+Object.assign(R,{buildRasterMesh:raster,buildMesh:buildWithStreets,architecture:{smoothTerrainGrid,roadCurve,roadAnchors,decompose,roofSpec,roofFrame,roofPieces,half,overlay,stitchSurface,buildArchitecture}});
 })(globalThis.RS);

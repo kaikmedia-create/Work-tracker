@@ -14,7 +14,7 @@ function start(pin){let rendered='';const els=Object.fromEntries(['login','submi
  const globals={window:{},document,fetch,crypto:webcrypto,DecompressionStream,TextEncoder,Response,Blob,Uint8Array,atob,btoa,unescape,encodeURIComponent,console};
  vm.runInNewContext(js,globals);return {els,load:()=>els.login.onsubmit({preventDefault(){}}),html:()=>rendered,files:()=>globals.window.RELIEF_SOURCE_FILES};
 }
-test('v13 index loads the current preview gate',()=>assert.match(entry,/gate-v23\.js\?v=23/));
+test('v13 index loads the current preview gate',()=>assert.match(entry,/gate-v24\.js\?v=24/));
 test('v13 gate refuses an incorrect PIN',async()=>{const r=start('0000');await r.load();assert.match(r.els.status.textContent,/PIN falsch/);assert.equal(r.html(),'');});
 test('v13 gate reconstructs tested source bytes and retains the 3D worker',async()=>{
  const r=start('2808');await r.load();assert(r.files()&&r.html().length>180000,'gate must finish writing the application');

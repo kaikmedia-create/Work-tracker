@@ -1,13 +1,13 @@
 {
-  "version": "23.0.0",
+  "version": "24.0.0",
   "account": "kaikmedia-create",
   "repository": "kaikmedia-create/Work-tracker",
   "folder": "relief-studio",
   "target": "github-pages",
   "status": "requires-deployment-check",
-  "base_commit": "629115830ba2908c687b4d7cd4d7f7ebe66fb1c5",
+  "base_commit": "a7143e692b99d85073c824a2ecdf053f62217fec",
   "entry": "index.html",
-  "gate": "gate-v23.js",
+  "gate": "gate-v24.js",
   "base_package": "bundle10.json",
   "updates": [
     "upgrade11.json",
@@ -23,12 +23,13 @@
     "upgrade20.json",
     "upgrade21.json",
     "upgrade22.json",
-    "upgrade23.json"
+    "upgrade23.json",
+    "upgrade24.json"
   ],
-  "source_in_repository": "Physical curved road contours shared by HD preview and print formats.",
+  "source_in_repository": "DEM smoothing, cursor-anchored 3D navigation and primary STL export.",
   "checks": {
     "runner": "npm test",
-    "feature": "tests/road-curves23.test.mjs"
+    "feature": "tests/navigation-terrain24.test.mjs"
   },
   "gating": "static preview PIN; not server-side access control",
   "code_commit": null,

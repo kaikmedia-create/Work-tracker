@@ -11,7 +11,7 @@ function instance(pin,corrupt=false){
  const globals={window:{},document,fetch,setTimeout:()=>0,URL:{createObjectURL:blob=>(downloaded=blob,'blob:test'),revokeObjectURL(){}},crypto:webcrypto,DecompressionStream,TextEncoder,Response,Blob,Uint8Array,atob,btoa,unescape,encodeURIComponent,console};
  vm.runInNewContext(code,globals);return {load:()=>els.login.onsubmit({preventDefault(){}}),files:()=>globals.window.RELIEF_SOURCE_FILES,html:()=>rendered,status:()=>els.status.textContent,diagnostic:()=>els['gate-diagnose'],downloaded:()=>downloaded};
 }
-test('v15 remains available while v15 is the published entry',async()=>assert((await readFile(join(site,'index.html'),'utf8')).includes('gate-v23.js?v=23')));
+test('v15 remains available while v15 is the published entry',async()=>assert((await readFile(join(site,'index.html'),'utf8')).includes('gate-v24.js?v=24')));
 test('v15 wrong PIN cannot expose the application',async()=>{const r=instance('0000');await r.load();assert.match(r.status(),/PIN falsch/);assert.equal(r.html(),'');});
 test('v15 decrypted app and worker match all tested browser source bytes',async()=>{
  const r=instance('2808');await r.load();assert(r.files(),r.status());

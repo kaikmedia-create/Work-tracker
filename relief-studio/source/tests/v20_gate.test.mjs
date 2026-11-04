@@ -13,7 +13,7 @@ function instance({pin='2808',fault='',fast=false}={}){
   URL:{createObjectURL:blob=>(downloaded=blob,'blob:test'),revokeObjectURL(){}},setTimeout:fast?(fn,ms)=>setTimeout(fn,Math.min(ms,10)):setTimeout,clearTimeout};
  vm.runInNewContext(code,ctx);return {load:()=>els.login.onsubmit({preventDefault(){}}),html:()=>html,files:()=>ctx.window.RELIEF_SOURCE_FILES,els,calls:()=>calls,downloaded:()=>downloaded};
 }
-test('v20 published entry loads v20 gate',async()=>assert.match(await readFile(join(site,'index.html'),'utf8'),/gate-v23\.js\?v=23/));
+test('v20 published entry loads v20 gate',async()=>assert.match(await readFile(join(site,'index.html'),'utf8'),/gate-v24\.js\?v=24/));
 test('v20 gate reconstructs exact current source and embeds exact worker bytes',async()=>{
  const x=instance();await x.load();assert(x.files(),x.els.status.textContent);
  for(const name of ['data.js','app.js','diagnostics.js','index.html','architecture.js','worker.js','core.js','style.css']){const key='public/'+name,c=JSON.parse(await readFile(join(site,'upgrade21.json'),'utf8')).changes[key];if(c)assert.equal(createHash('sha256').update(x.files()[key]).digest('hex'),c.base,name);else assert.equal(x.files()['public/'+name],await readFile(join(root,'public',name),'utf8'),name);}
