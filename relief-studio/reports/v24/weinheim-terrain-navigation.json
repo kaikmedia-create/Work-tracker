@@ -1,0 +1,10 @@
+{
+  "release": "24.0.0",
+  "testedSource": "1a9fc354de9b8743c73cac728ec19122541ebd08",
+  "ciRun": 41838229369,
+  "suite": {"passed":281,"failed":0,"skipped":0},
+  "input": {"project":"Previously saved Weinheim project (private, not published)","extentKm":[3.2,3.0],"modelWidthMm":200,"terrainMode":"soft","freshNetworkDownload":false},
+  "browser": {"engine":"Chromium (WebGL disabled)","tested":["Open saved project in generated preview","Zoom with wheel","Pan","Double-click focus","32x button zoom","Fit back to 100%","Top view","Download via primary export action"],"uncaughtErrors":0,"download":"weinheim.stl"},
+  "independentBinaryStlCheck": {"sizeBytes":113895084,"triangles":2277900,"uniqueVertices":1138952,"connectedComponents":1,"invalidEdgePairs":0,"repeatedPairs":0,"degenerateTriangles":0,"signedVolumeMm3":322825.8},
+  "limitations":"Digital geometry and browser checks only. No physical print, new elevation survey or frame-rate benchmark."
+}
