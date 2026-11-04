@@ -1,0 +1,44 @@
+name: Check published release and one large uncached Weinheim model
+on:
+  push:
+    branches: ['qa/relief19-large-smoke']
+permissions:
+  contents: read
+jobs:
+  large:
+    timeout-minutes: 14
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        persist-credentials: false
+    - uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+    - name: Compare the public Pages release files against the approved bytes
+      run: |
+        set -euo pipefail
+        cd relief-studio
+        origin=https://kaikmedia-create.github.io/Work-tracker/relief-studio
+        for f in index.html gate-v19.js upgrade19.json; do
+          same=0
+          for attempt in 1 2 3 4 5; do curl -fsSL --max-time 15 "$origin/$f?release=19-cc6f081&check=$attempt" -o "$RUNNER_TEMP/blob" && cmp -s "$f" "$RUNNER_TEMP/blob" && { same=1; break; }; sleep 5; done
+          test "$same" = 1; sha256sum "$f";
+        done
+    - name: Load real external map and height data, build mesh, download both model files
+      run: |
+        set -euo pipefail
+        cd relief-studio/source; node tools/prepare_release19.mjs; node --test tests/v19_gate.test.mjs
+        python -m venv "$RUNNER_TEMP/venv"; "$RUNNER_TEMP/venv/bin/pip" -q install 'playwright==1.55.0'
+        python - <<'PY'
+        from pathlib import Path
+        p=Path('tests/cities19_live.py');s=p.read_text();a=s.index(' in [(\'Berlin\'');b=s.index(']:',a)+1;s=s[:a]+" in [('Weinheim',8.6808,49.548,3.2,3.0)]"+s[b:];s=s.replace('len(results)!=4','len(results)!=1');s=s.replace("assert (await page.evaluate('()=>[ReliefStudio.settings.widthKm,ReliefStudio.settings.heightKm]'))==[w,h]", "assert (await page.evaluate('()=>[ReliefStudio.settings.lon,ReliefStudio.settings.lat,ReliefStudio.settings.widthKm,ReliefStudio.settings.heightKm]'))==[lon,lat,w,h]");Path('tests/large_smoke_local.py').write_text(s)
+        PY
+        python -m http.server 8765 --bind 127.0.0.1 >/dev/null 2>&1 &
+        CHROMIUM=$(command -v google-chrome) "$RUNNER_TEMP/venv/bin/python" tests/large_smoke_local.py "$RUNNER_TEMP/large-result"
+    - uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: published-geometry-large
+        path: ${{ runner.temp }}/large-result/live.json
+        retention-days: 7
