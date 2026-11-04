@@ -1,0 +1,22 @@
+{
+  "release": "19.0.0",
+  "runtimeCommit": "cc6f08130ad32781c91096fe4831322a91e32a39",
+  "verificationRun": "https://github.com/kaikmedia-create/Work-tracker/actions/runs/41799358836",
+  "testedOnUTC": "2026-11-04",
+  "publishedBytesMatch": ["index.html", "gate-v19.js", "upgrade19.json"],
+  "releaseDeltaSHA256": "3c6542ca1164ecfb788e43868426c90db0f7e7ed6df66d8aeb503a1a2f7d41bc",
+  "method": "After comparing the three public production files against the approved bytes, the same verified application was served to a fresh Chromium context on the QA machine. Browser requested actual external map and elevation data. No simulated responses, no imported project.",
+  "city": "Weinheim",
+  "centerLonLat": [8.6808, 49.548],
+  "extentKm": [3.2, 3.0],
+  "inputBuildingObjects": 6346,
+  "modeledBuildingObjects": 6344,
+  "missed": 0,
+  "triangles": 1155746,
+  "demTiles": 9,
+  "load": {"packages": 3, "requests": 3, "durationMs": 7982, "resumeAttempts": 0},
+  "exports": {"stl": {"bytes": 57787384, "triangles": 1155746}, "3mf": {"bytes": 85581432, "triangles": 1155746}},
+  "totalSeconds": 71.77,
+  "passed": true,
+  "limitations": "Single observed run, not a provider SLA. No physical print. No raw private project data is included."
+}
