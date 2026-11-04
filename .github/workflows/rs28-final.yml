@@ -1,0 +1,45 @@
+name: Verify full international architecture release
+on:
+  push:
+    branches: [qa/world-building-details-28]
+    paths: ['.github/workflows/rs28-final.yml','final28/**']
+permissions: {contents: write, actions: read}
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with: {path: qa}
+      - uses: actions/checkout@v4
+        with: {path: repo, ref: 296fc05a00d1d792646d8dbc0cbc29b03d7c7499}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - uses: actions/download-artifact@v4
+        with: {run-id: 41853795992, name: candidate, path: candidate, github-token: '${{ github.token }}'}
+      - uses: actions/download-artifact@v4
+        with: {run-id: 41852419235, name: public-world-inputs, path: inputs, github-token: '${{ github.token }}'}
+      - name: Integrate roof surfaces and bounded dense-scene geometry
+        run: |
+          cp -a repo/relief-studio baseline; tar xzf candidate/candidate.tgz -C repo
+          python qa/final28/finish.py repo/relief-studio baseline
+          mkdir -p ear; cd ear; npm pack --silent earcut@3.0.2; tar xzf earcut-3.0.2.tgz; cp package/src/earcut.js ../repo/relief-studio/source/public/world-earcut28.js; cp package/LICENSE ../repo/relief-studio/source/public/world-earcut-LICENSE.txt
+          cd ..; tar czf final.tgz -C repo relief-studio
+      - uses: actions/upload-artifact@v4
+        with: {name: final-source, path: final.tgz, retention-days: 1}
+      - name: Test regression suite and exact gate
+        working-directory: repo/relief-studio/source
+        run: |
+          npm test >/tmp/test.log 2>&1 || { grep -A40 '^not ok' /tmp/test.log | head -140; tail -25 /tmp/test.log; exit 1; }
+          tail -10 /tmp/test.log
+      - name: Build and validate all seven international city meshes
+        run: |
+          node --max-old-space-size=4300 repo/relief-studio/source/tests/world28-cities.mjs inputs results
+          mkdir -p repo/relief-studio/reports/v28; cp results/international.json repo/relief-studio/reports/v28/; tail -9 /tmp/test.log > repo/relief-studio/reports/v28/test-summary.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: final-scenes, path: results, retention-days: 1, if-no-files-found: ignore}
+      - name: Save verified release candidate
+        working-directory: repo
+        run: |
+          git config user.name 'Relief Studio QA'; git config user.email 'github-actions[bot]@users.noreply.github.com'; git add -u relief-studio; cd relief-studio; git add RELEASE-NOTES-28.md upgrade28.json gate-v28.js source/public/world*.js source/public/world*LICENSE.txt source/tools/world-decoder-lock.json source/tools/prepare_release28.mjs source/tests/world28*.mjs source/tests/v28_gate.test.mjs reports/v28; git commit -m 'Improve printed landmarks worldwide, measured roof sources and large multipart architecture'; git push origin HEAD:refs/heads/feature/world-details-28-${GITHUB_RUN_ID}
