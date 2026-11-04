@@ -1,0 +1,9 @@
+{
+  "release": "22.0.0",
+  "testedCommit": "3aea319e25882d2cd34f7be08be6127c666dcf4a",
+  "suite": {"workflow": 41831111271, "passed": 253, "failed": 0, "skipped": 0},
+  "weinheim": {"sizeKm": [3.2, 3.0], "printWidthMm": 200, "input": "previously saved user project, kept private", "browser": "Chromium with WebGL disabled", "deviceScaleFactor": 2, "fullMeshTriangles": 1714546, "hdCanvasPixels": [2166, 1208], "rotateAndReleaseToFinishedImageSecondsOneObservation": 0.431, "workerMeshInitializationsBeforeQualityToggle": 1, "finishedViewsBeforeToggle": 3, "tested": ["import", "full local render", "drag and settle", "top view", "HD off and on"], "pageErrors": []},
+  "webGLTests": {"workflow": 41831401201, "scope": "Synthetic dense grid; checks full indexed draw during rotation, actual visible center pixel, no new mesh upload during view changes, fast mode and restoration. Not a device FPS benchmark."},
+  "unmodified": ["export mesh", "STL writer", "3MF writer", "map data loader"],
+  "limitations": "The image timing is not a performance guarantee for other devices or browsers. Real Mac user hardware was not instrumented."
+}
