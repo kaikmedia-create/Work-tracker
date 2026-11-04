@@ -1,0 +1,52 @@
+name: Verify printable road contours
+on:
+  push:
+    branches: [qa/road-contours-23]
+permissions:
+  contents: write
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with: {path: review, persist-credentials: false}
+      - uses: actions/checkout@v4
+        with: {path: candidate, ref: 629115830ba2908c687b4d7cd4d7f7ebe66fb1c5, persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Reconstruct release; require all 25 files to match local test bytes
+        run: |
+          cd candidate
+          node relief-studio/source/tools/prepare_release22.mjs
+          python3 ../review/.rs23/release.py relief-studio
+          git add -- relief-studio
+          python3 - <<'PY'
+          import hashlib as h,subprocess as s,pathlib
+          paths=s.check_output(['git','diff','--cached','--name-only']).decode().splitlines()
+          files=sorted([p.removeprefix('relief-studio/') for p in paths]);assert len(files)==25,paths
+          digest=h.sha256(''.join(x+':'+h.sha256((pathlib.Path('relief-studio')/x).read_bytes()).hexdigest()+'\n' for x in files).encode()).hexdigest()
+          print('Release digest:',digest);assert digest=='65e310cec4152ca1aabc50977de17a6fbd918672b1e58c30856086112d04e9e7'
+          PY
+      - name: Test exact release, including geometry and encrypted preview
+        working-directory: candidate/relief-studio/source
+        run: npm test
+      - name: Stage only checksum-verified and tested source on feature branch
+        working-directory: candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json,os,subprocess as s,pathlib,urllib.request as u
+          prefix='https://api.github.com/repos/'+os.environ['GITHUB_REPOSITORY']+'/git/'
+          headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json'}
+          def post(route,payload):
+           with u.urlopen(u.Request(prefix+route,data=json.dumps(payload).encode(),headers=headers),timeout=45) as f:return json.load(f)
+          paths=s.check_output(['git','diff','--cached','--name-only']).decode().splitlines()
+          assert len(paths)==25 and all(p.startswith('relief-studio/') for p in paths)
+          base=s.check_output(['git','rev-parse','HEAD^{tree}']).decode().strip();parent=s.check_output(['git','rev-parse','HEAD']).decode().strip()
+          entries=[{'path':p,'mode':'100644','type':'blob','content':s.check_output(['git','show',':'+p]).decode()} for p in paths]
+          tree=post('trees',{'base_tree':base,'tree':entries})['sha']
+          commit=post('commits',{'message':'Relief Studio 23: fit road edges and shoulders to rounded, junction-preserving Bezier streets','tree':tree,'parents':[parent]})['sha']
+          post('refs',{'ref':'refs/heads/feature/verified-road-contours-23','sha':commit});print('Verified source commit:',commit)
+          PY
