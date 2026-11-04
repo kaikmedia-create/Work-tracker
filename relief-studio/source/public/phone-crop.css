@@ -31,3 +31,7 @@ body[data-crop-ui]>.workspace:not([hidden]) {flex:1 1 0!important;height:auto!im
 [data-crop-ui] #phone-map-dialog p {font-size:14px;line-height:1.5;}
 [data-crop-ui] #phone-map-dialog button {min-height:44px;border:1px solid #cdd8ce;background:#eef3ed;color:#214638;border-radius:8px;margin:3px;padding:0 10px;}
 @media (orientation:landscape) and (max-height:550px){[data-crop-ui] .stage-top {flex-wrap:nowrap;} [data-crop-ui] .stage-bottom {margin:0;min-height:0;}}
+/* One scrolling editor, not a flex-sized panel with overflowing children underneath a footer. */
+[data-crop-ui][data-phone-pane=edit] .sidebar {display:block!important;}
+[data-crop-ui][data-phone-pane=edit] .panels {display:block;flex:none;height:auto!important;max-height:none;}
+[data-crop-ui][data-phone-pane=edit] .sidebar-bottom {position:static!important;margin-top:0;}
