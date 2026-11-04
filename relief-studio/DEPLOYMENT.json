@@ -1,13 +1,13 @@
 {
-  "version": "26.0.0",
+  "version": "27.0.0",
   "account": "kaikmedia-create",
   "repository": "kaikmedia-create/Work-tracker",
   "folder": "relief-studio",
   "target": "github-pages",
   "status": "requires-deployment-check",
-  "base_commit": "833b7bf5fc77027fc1c7d6d291d7a01bbf46b6e8",
+  "base_commit": "3cb96e6b4f464fdf404c64dff49d73bda3a5f751",
   "entry": "index.html",
-  "gate": "gate-v26.js",
+  "gate": "gate-v27.js",
   "base_package": "bundle10.json",
   "updates": [
     "upgrade11.json",
@@ -26,12 +26,13 @@
     "upgrade23.json",
     "upgrade24.json",
     "upgrade25.json",
-    "upgrade26.json"
+    "upgrade26.json",
+    "upgrade27.json"
   ],
   "source_in_repository": "Georeferenced roof models, explicit building relations, roof source provenance and import.",
   "checks": {
     "runner": "npm test",
-    "feature": "tests/landmarks26.test.mjs"
+    "feature": "tests/roof-packs27.test.mjs"
   },
   "gating": "static preview PIN; not server-side access control",
   "code_commit": null,

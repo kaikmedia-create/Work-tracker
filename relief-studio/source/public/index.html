@@ -14,7 +14,7 @@
 <body data-mode="choose">
 <header class="topbar">
 <a aria-label="Relief Studio Startseite" class="brand" href="#" id="home"><img alt="" height="36" src="favicon.svg" width="36"/><span>Relief<span class="brand-light">Studio</span><small>RELIEF MAP ATELIER</small></span></a>
-<div class="project-state"><span class="dot"></span><span id="project-state">Neues Projekt</span><span class="version">26</span></div>
+<div class="project-state"><span class="dot"></span><span id="project-state">Neues Projekt</span><span class="version">27</span></div>
 <nav aria-label="Projektaktionen" class="header-actions"><button class="ghost" hidden="" id="switch-mode">Modus wechseln</button><button class="ghost" id="new-project">＋ Neu</button><button class="ghost" id="open-project">Öffnen</button><button class="ghost" disabled="" hidden="" id="save-project">Speichern</button><button class="primary" hidden="" id="export-top">Exportieren <span>↗</span></button></nav>
 </header>
 <div class="access-note" hidden="" id="access-note"></div>
@@ -66,7 +66,7 @@
 <div class="section-title"><h3>Vorhandene Wahrzeichen</h3><span class="badge">QUELLDATEN</span></div>
 <p class="hint">Die Markierung verändert nur die Vorschaufarbe, nicht die Gebäudeform. Eine manuelle Höhe überschreibt ausschließlich den dokumentierten Höhenwert.</p>
 <div class="landmarks" id="landmark-list"><p class="hint">Nach dem Laden erscheinen die vorhandenen Wahrzeichen.</p></div>
-<details><summary>3D-Gebäude aus eigener Quelle</summary><p class="hint">Für alle Regionen: vollständige, triangulierte Dachflächen als GeoJSON (WGS84, Höhen über Gebäudegrund). Erforderlich: source, height_reference: ground und je Feature properties.osm_id. Der Import erfolgt lokal.</p><button class="secondary full" id="roof-import">Dachflächen importieren</button><input type="file" id="roof-file" accept=".geojson,.json" hidden></details>
+<details><summary>3D-Gebäude aus eigener Quelle</summary><p class="hint">Für alle Regionen: vollständige, triangulierte Dachflächen als GeoJSON (WGS84, Höhen über Gebäudegrund). Erforderlich: source, height_reference: ground und je Feature properties.osm_id. Alternativ: regionales Dachhöhenpaket (rs-roofs-1). Der Import erfolgt lokal.</p><button class="secondary full" id="roof-import">Dachflächen importieren</button><input type="file" id="roof-file" accept=".geojson,.json" hidden></details>
 <button class="secondary full" id="model-preset">Maßstäbliche Höhen verwenden</button>
 </section>
 <section aria-label="Kartengestaltung" class="panel" hidden="" id="panel-style">
@@ -161,7 +161,7 @@
 </div>
 <div class="stage-bottom"><div class="stat"><span id="metric-a-label">AUSSCHNITT</span><strong id="metric-a">3,20 × 3,00 km</strong></div><div class="stat"><span id="metric-b-label">MODELLGRÖẞE INKL. RAHMEN</span><strong id="metric-b">208 × 196 mm</strong></div><div class="stat"><span id="metric-c-label">DATENSTATUS</span><strong id="metric-c">Noch nicht geladen</strong></div><button class="quality-button" id="quality-toggle">Datenqualität <span>↗</span></button></div>
 <div class="quality-panel" hidden="" id="quality-panel"><h3>Was im Modell steckt.</h3><div id="quality-content"><p>Die Datenqualität wird nach dem Laden angezeigt.</p></div></div>
-<footer class="main-footer"><span>RELIEF STUDIO <b>26.0</b></span><span>Echte Geografie. Bewusste Gestaltung.</span><button class="text-button" id="help">Hilfe &amp; Quellen</button></footer>
+<footer class="main-footer"><span>RELIEF STUDIO <b>27.0</b></span><span>Echte Geografie. Bewusste Gestaltung.</span><button class="text-button" id="help">Hilfe &amp; Quellen</button></footer>
 </main>
 </div>
 <div aria-live="polite" class="toast" hidden="" id="toast" role="status"></div>
