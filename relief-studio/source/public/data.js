@@ -1,4 +1,4 @@
-/* Relief Studio 13: adaptive map packages, current Overpass providers, resumable 3D loads.
+/* Relief Studio 17: adaptive map packages, current Overpass providers, resumable 3D loads.
  * Public servers: at most two requests at once; never rotate to evade HTTP 429.
  */
 (function(R){
@@ -6,7 +6,8 @@
 const OVERPASS=['https://overpass.private.coffee/api/interpreter','https://maps.mail.ru/osm/tools/overpass/api/interpreter','https://overpass-api.de/api/interpreter'];
 // Independent Europe-only Overpass extract. Never query it outside its coverage.
 const EUROPE_OVERPASS='https://ovp.dresel.systems/api/interpreter';
-const europeBounds=b=>Array.isArray(b)&&b.length===4&&b[0]>=-25&&b[2]<=45&&b[1]>=34&&b[3]<=72;
+// Conservative subsets of the Europe extract; North Africa is NOT Europe.
+const europeBounds=b=>Array.isArray(b)&&b.length===4&&[[-5,45,20,55],[-10,40,4,44]].some(r=>b[0]>=r[0]&&b[1]>=r[1]&&b[2]<=r[2]&&b[3]<=r[3]);
 const endpointsFor=b=>europeBounds(b)?[EUROPE_OVERPASS,...OVERPASS]:OVERPASS;
 const BODY_IDLE_MS=26000,BODY_MAX_MS=185000;
 const abortError=()=>new DOMException('Abgebrochen','AbortError');
@@ -79,7 +80,8 @@ function mergeOSM(raws){const objects=new Map(),dates=[];for(const raw of raws){
 // Dependency injection lets tests exercise actual network/caching code, not replace
 // the complete loader with a fake success function.
 function createDataLoader(options={}){
- const cfg={headerMs:33000,serverHeaderMs:70000,poiMs:12000,idleMs:BODY_IDLE_MS,bodyMs:BODY_MAX_MS,sessionMs:180000,retryMs:800,maxRequests:64,resumeAttempts:1,...options.config};
+ // A 25-second server query plus admission delay must fit on EVERY provider.
+ const cfg={headerMs:45000,serverHeaderMs:135000,poiMs:12000,idleMs:BODY_IDLE_MS,bodyMs:BODY_MAX_MS,sessionMs:180000,retryMs:800,maxRequests:64,resumeAttempts:1,...options.config};
  const fetcher=options.fetch||((...a)=>fetch(...a)),cache=options.cache||createCache(),flights=new Map(),queue=[];
  let active=0,preferred=0,cooldown=0;
  function drain(){while(active<2&&queue.length){const job=queue.shift();job.signal?.removeEventListener('abort',job.cancel);if(job.signal?.aborted){job.reject(abortError());continue;}active++;Promise.resolve().then(job.work).then(job.resolve,job.reject).finally(()=>{active--;drain();});}}
@@ -99,10 +101,12 @@ function createDataLoader(options={}){
   }catch(e){if(signal?.aborted)throw abortError();if(headerTimedOut)throw error('HEADER_TIMEOUT','Kartendienst hat noch keine Daten geliefert.');if(e instanceof TypeError)throw error('NETWORK','Verbindung zum Kartendienst unterbrochen.');throw e;}
   finally{clearTimeout(timer);signal?.removeEventListener('abort',stop);control.abort();}
  }
+ function completePackage(raw){return raw&&Array.isArray(raw.elements)&&!raw.remark;}
+ function allowed(){if(Date.now()<cooldown)throw error('RATE_LIMIT',`Kartendienst-Pause: noch ${Math.ceil((cooldown-Date.now())/1000)} s. Bereits geladene Pakete bleiben gespeichert.`,{retryAt:cooldown});}
  function keyFor(b,layer){return 'osm12:'+layer+':'+b.map(x=>x.toFixed(6)).join(',');}
  async function getOSMLayer(b,signal,layer,onProgress,opts={}){
   const key=keyFor(b,layer),phase=layer==='pois'?'pois':'base';check(signal);
-  if(!opts.refresh){const saved=await cache.get(key);check(signal);if(saved){send(onProgress,{phase,status:'cached',detail:'Datenpaket aus lokalem Speicher.'});return saved;}}
+  if(!opts.refresh){const saved=await cache.get(key);check(signal);if(completePackage(saved)){send(onProgress,{phase,status:'cached',detail:'Datenpaket aus lokalem Speicher.'});return saved;}}
   return shared((R.server?'server:':'public:')+key,signal,onProgress,async(signal,emit)=>{
    // Shared across simultaneous same-area loads; successful package persists before
    // the overall map completes, so retrying never discards already finished work.
@@ -110,12 +114,14 @@ function createDataLoader(options={}){
    for(let i=0;i<attempts;i++){
     check(signal);if(Date.now()<cooldown)throw error('RATE_LIMIT',`Kartendienst-Pause: noch ${Math.ceil((cooldown-Date.now())/1000)} s. Bereits geladene Pakete bleiben gespeichert.`,{retryAt:cooldown});
     const index=(startEndpoint+i)%endpoints.length,endpoint=endpoints[index],service=R.server?'Studio-Server':new URL(endpoint).hostname;
-    emit({phase,status:'waiting',attempt:i+1,attempts,detail:(i?'Anderer Datendienst wird versucht: ':'Kartenpaket wird angefragt: ')+service});
+    const attemptStart=Date.now();emit({phase,layer,service,status:'waiting',attempt:i+1,attempts,detail:(i?'Anderer Datendienst wird versucht: ':'Kartenpaket wird angefragt: ')+service});
     try{
-     const value=await slot(signal,()=>wire(R.server?`api/map?bbox=${encodeURIComponent(b.join(','))}&layer=${layer}&mode=${opts.mode||'poster'}`:endpoint,R.server?{}:{method:'POST',body:new URLSearchParams({data:layer==='pois'?poiQuery(b):osmQuery(b,layer)})},signal,e=>emit({phase,layer,attempt:i+1,attempts,...e}),layer==='pois'?cfg.poiMs:R.server?cfg.serverHeaderMs:(i?Math.min(cfg.headerMs,19000):cfg.headerMs),layer==='pois'?5000000:layer==='geometry'?8000000:23000000));
-     if(!R.server)preferred=index;await cache.set(key,value);check(signal);return value;
-    }catch(e){check(signal);last=e;failures.push({service,code:e.code||'UNKNOWN',status:e.status||null});
-     if(['RATE_LIMIT','QUERY_TIMEOUT','SIZE','INCOMPLETE','HTTP'].includes(e.code)||i+1===attempts)break;
+     const value=await slot(signal,()=>{allowed();
+      if(Number.isFinite(opts.requests)){if(opts.requests>=cfg.maxRequests)throw error('BUDGET','Anfragelimit erreicht. Fertige Pakete bleiben gespeichert; bitte erneut versuchen.');opts.requests++;}
+      return wire(R.server?`api/map?bbox=${encodeURIComponent(b.join(','))}&layer=${layer}&mode=${opts.mode||'poster'}`:endpoint,R.server?{}:{method:'POST',body:new URLSearchParams({data:layer==='pois'?poiQuery(b):osmQuery(b,layer)})},signal,e=>emit({phase,layer,attempt:i+1,attempts,...e}),layer==='pois'?cfg.poiMs:R.server?cfg.serverHeaderMs:cfg.headerMs,layer==='pois'?5000000:layer==='geometry'?8000000:23000000);});
+     if(!R.server)preferred=index;emit({phase,layer,service,status:'response-complete',attempt:i+1,durationMs:Date.now()-attemptStart,count:value.elements.length});await cache.set(key,value);check(signal);return value;
+    }catch(e){check(signal);last=e;const durationMs=Date.now()-attemptStart;failures.push({service,code:e.code||'UNKNOWN',status:e.status||null,durationMs});emit({phase,layer,service,status:'attempt-failed',code:e.code,attempt:i+1,attempts,httpStatus:e.status,durationMs});
+     if(['RATE_LIMIT','BUDGET','QUERY_TIMEOUT','SIZE','INCOMPLETE','HTTP'].includes(e.code)||i+1===attempts)break;
      emit({phase,status:'retry',detail:service+': '+e.message+' Weiterer Datendienst wird versucht.'});await pause(cfg.retryMs,signal);}
    }
    if(last){last.diagnostics={...(last.diagnostics||{}),layer,bounds:b.slice(),attemptedProviders:failures};throw last;}
@@ -125,12 +131,18 @@ function createDataLoader(options={}){
  // Split only incomplete compulsory geometry and relation tiles on recoverable
  // slow-service errors. Never rotate/split in response to HTTP 429.
  async function requiredTask(b,layer,signal,onProgress,ctx,depth=0){
-  const planKey='plan:'+keyFor(b,layer);let plan=ctx.refresh?null:await cache.get(planKey);check(signal);
+  // A complete parent supersedes obsolete subdivision plans. Otherwise a
+  // force-refresh success can still cause the same missing child to be fetched.
+  const key=keyFor(b,layer),saved=ctx.refresh?null:await cache.get(key);check(signal);
+  if(completePackage(saved)){
+   ctx.done++;send(onProgress,{phase:'base',status:'cached',layer,detail:'Vollständiges Datenpaket aus lokalem Speicher.'});
+   send(onProgress,{phase:'base',status:'part',done:ctx.done,total:ctx.total,detail:`${ctx.done} von ${ctx.total} Kartenpaketen vollständig geladen.`});return saved;
+  }
+  const planKey='plan:'+key;let plan=ctx.refresh?null:await cache.get(planKey);check(signal);
   if(Array.isArray(plan)&&plan.length===2&&depth<5){
    ctx.total++;return mergeOSM(await Promise.all(plan.map(p=>requiredTask(p,layer,signal,onProgress,ctx,depth+1))));
   }
   try{
-   if(++ctx.requests>cfg.maxRequests)throw error('BUDGET','Zu viele Abfragen. Fertige Pakete bleiben gespeichert; bitte erneut versuchen.');
    const raw=await getOSMLayer(b,signal,layer,onProgress,ctx);
    ctx.done++;send(onProgress,{phase:'base',status:'part',done:ctx.done,total:ctx.total,detail:`${ctx.done} von ${ctx.total} Kartenpaketen vollständig geladen.`});
    return raw;
@@ -151,24 +163,28 @@ function createDataLoader(options={}){
   const local=control.signal,parts=initialParts(bounds,mode),ctx={done:0,total:parts.length+1,requests:0,mode,refresh};
   const placeholder={cols:2,rows:2,values:[0,0,0,0],available:false,source:'Nicht geladen – reines 2D-Poster'};
   // Heights are independent; any failed height load must not erase raw OSM cache.
-  const terrainPromise=terrainRequired?terrainData(bounds,local,onProgress,cache,refresh).then(value=>({value}),e=>({error:e})):Promise.resolve({value:placeholder});
+  const terrainPromise=terrainRequired?terrainData(bounds,local,onProgress,cache,refresh).then(value=>({value}),e=>{
+   if(e.name==='AbortError')throw e;
+   throw error('TERRAIN','Geländedaten: '+e.message+' Vollständige Kartenpakete bleiben gespeichert.',{diagnostics:{...e.diagnostics,cause:e.code||'TERRAIN',status:e.status||null,completedPackages:ctx.done,totalPackages:ctx.total}});
+  }):Promise.resolve({value:placeholder});
+  terrainPromise.catch(()=>{});
   try{
    send(onProgress,{phase:'base',status:'part',done:0,total:ctx.total,detail:`${ctx.total} überschaubare Kartenpakete; maximal zwei Anfragen gleichzeitig.`});
    const geoPromise=Promise.all(parts.map(b=>requiredTask(b,'geometry',local,onProgress,ctx)));
    const relPromise=requiredTask(bounds,'relations',local,onProgress,ctx);
-   const [geometry,relations]=await Promise.all([geoPromise,relPromise]);check(local);
+   const [geometry,relations,height]=await Promise.all([geoPromise,relPromise,terrainPromise]);check(local);
    const raw=mergeOSM([...geometry,relations]);send(onProgress,{phase:'base',status:'done',count:raw.elements.length,detail:'Alle erforderlichen Kartenpakete geladen.'});
    // POIs are optional: one bounded request, no two 45-second fallback waits.
    const optional=new AbortController(),cancelOptional=()=>optional.abort();local.addEventListener('abort',cancelOptional,{once:true});const poiTimer=setTimeout(cancelOptional,cfg.poiMs);let poi,warnings=[];
    try{poi=await getOSMLayer(bounds,optional.signal,'pois',onProgress,{mode,refresh});send(onProgress,{phase:'pois',status:'done',count:poi.elements.length,detail:'Historische Orte geladen.'});}
    catch(e){check(local);warnings.push('Zusätzliche historische Orte konnten nicht geladen werden. Die vollständigen Gebäude, Straßen und Wasserflächen bleiben nutzbar; erneutes Laden ergänzt fehlende Marker aus dem Cache.');send(onProgress,{phase:'pois',status:'skipped',detail:'Zusätzliche Marker vorerst übersprungen – Karte bleibt nutzbar.'});}
    finally{clearTimeout(poiTimer);local.removeEventListener('abort',cancelOptional);optional.abort();}
-   const height=await terrainPromise;if(height.error)throw error('TERRAIN','Geländedaten: '+height.error.message+' Die Kartendaten wurden für den nächsten Versuch gespeichert.');check(local);
+   check(local);
    send(onProgress,{phase:'process',status:'working',detail:'Vollständige Kartenpakete werden zusammengeführt.'});await pause(0,local);
    const features=R.parseOSM(mergeOSM([raw,poi||{elements:[]}]),bounds);check(local);
    const data={version:2,coastlineVersion:8,bounds:bounds.slice(),terrain:height.value,...features,capturedAt:new Date().toISOString(),osmTimestamp:raw.osm3s?.timestamp_osm_base||null,source:'OpenStreetMap contributors · ODbL 1.0',realData:true,loadStats:{packages:ctx.done,requests:ctx.requests,durationMs:Date.now()-started},loaderVersion:11,architectureSourceVersion:12};
    data.warnings.push(...warnings);if(!features.buildings.length)data.warnings.push('Keine Gebäude im geladenen Ausschnitt erfasst.');send(onProgress,{phase:'process',status:'done',count:data.buildings.length,detail:'Karte vollständig aufbereitet.'});return data;
-  }catch(e){stop();if(expired&&!signal?.aborted)throw error('DEADLINE','Gesamtzeit erreicht. Vollständige Datenpakete sind gespeichert; „Erneut versuchen“ lädt nur Fehlendes.',{completedPackages:ctx.done,totalPackages:ctx.total});if(signal?.aborted)throw abortError();throw e;}
+  }catch(e){stop();if(expired&&!signal?.aborted)throw error('DEADLINE','Gesamtzeit erreicht. Vollständige Datenpakete sind gespeichert; „Erneut versuchen“ lädt nur Fehlendes.',{completedPackages:ctx.done,totalPackages:ctx.total,diagnostics:{completedPackages:ctx.done,totalPackages:ctx.total,elapsedMs:Date.now()-started,requests:ctx.requests}});if(signal?.aborted)throw abortError();throw e;}
   finally{clearTimeout(deadline);signal?.removeEventListener('abort',stop);}
  }
  // One bounded continuation is allowed only after real required packages completed.
@@ -212,12 +228,22 @@ async function terrainData(bounds,signal,onProgress,cache,refresh=false){
  let z=14,a,b;do{a=tileXY(bounds[0],bounds[3],z);b=tileXY(bounds[2],bounds[1],z);if((Math.floor(b[0])-Math.floor(a[0])+1)*(Math.floor(b[1])-Math.floor(a[1])+1)<=48)break;z--;}while(z>9);
  const jobs=[];for(let y=Math.floor(a[1]);y<=Math.floor(b[1]);y++)for(let x=Math.floor(a[0]);x<=Math.floor(b[0]);x++)jobs.push([x,y]);
  const tiles=new Map();let next=0,done=0;send(onProgress,{phase:'terrain',status:'tiles',done:0,total:jobs.length,detail:`${jobs.length} Höhenkacheln zu laden`});
- const work=async()=>{while(next<jobs.length){if(signal?.aborted)throw abortError();const [x,y]=jobs[next++],url=R.server?`api/terrain/${z}/${x}/${y}.png`:`https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${x}/${y}.png`,tileKey=`terrain11:${z}/${x}/${y}`;let blob=refresh?null:await cache?.get(tileKey);check(signal);if(!blob){for(let attempt=0;attempt<2;attempt++)try{
-    const response=await request(url,{signal},25000);blob=new Blob([await readBytes(response,1000000,15000,{signal,maxTime:45000})],{type:'image/png'});break;
-   }catch(e){if(signal?.aborted||attempt||['RATE_LIMIT','HTTP'].includes(e.code))throw e;await pause(500,signal);}
-   await cache?.set(tileKey,blob,7*24*3600000);}check(signal);
-  let image;if(typeof createImageBitmap==='function')image=await createImageBitmap(blob);else image=await new Promise((resolve,reject)=>{const im=new Image(),u=URL.createObjectURL(blob);im.onload=()=>{URL.revokeObjectURL(u);resolve(im);};im.onerror=()=>{URL.revokeObjectURL(u);reject(Error('Höhenbild ist nicht lesbar.'));};im.src=u;});
-  const canvas=document.createElement('canvas');canvas.width=256;canvas.height=256;const ctx=canvas.getContext('2d',{willReadFrequently:true});ctx.drawImage(image,0,0);const rgba=ctx.getImageData(0,0,256,256).data;image.close?.();const h=new Float32Array(65536);for(let i=0;i<h.length;i++)h[i]=rgba[i*4]*256+rgba[i*4+1]+rgba[i*4+2]/256-32768;tiles.set(x+','+y,h);done++;send(onProgress,{phase:'terrain',status:'tiles',done,total:jobs.length,detail:`${done} von ${jobs.length} Höhenkacheln empfangen`});
+ const work=async()=>{while(next<jobs.length){if(signal?.aborted)throw abortError();const [x,y]=jobs[next++],url=R.server?`api/terrain/${z}/${x}/${y}.png`:`https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${x}/${y}.png`,tileKey=`terrain11:${z}/${x}/${y}`;const tile=`${z}/${x}/${y}`,service=R.server?'Studio-Server':'s3.amazonaws.com';let rgba;
+  try{
+   let blob=refresh?null:await cache?.get(tileKey);check(signal);
+   async function pixels(bytes){
+    const image=typeof createImageBitmap==='function'?await createImageBitmap(bytes):await new Promise((resolve,reject)=>{const im=new Image(),u=URL.createObjectURL(bytes);im.onload=()=>{URL.revokeObjectURL(u);resolve(im);};im.onerror=()=>{URL.revokeObjectURL(u);reject(Error('PNG nicht lesbar.'));};im.src=u;});
+    try{if(image.width!==256||image.height!==256)throw Error('Erwartet: 256 × 256 Pixel.');const canvas=document.createElement('canvas');canvas.width=canvas.height=256;const ctx=canvas.getContext('2d',{willReadFrequently:true});ctx.drawImage(image,0,0);return ctx.getImageData(0,0,256,256).data;}finally{image.close?.();}
+   }
+   if(blob)try{rgba=await pixels(blob);}catch{send(onProgress,{phase:'terrain',status:'cache-invalid',tile,detail:'Gespeicherte Höhenkachel nicht lesbar. Sie wird neu geladen.'});}
+   if(!rgba)for(let attempt=0;attempt<2;attempt++)try{
+    const response=await request(url,{signal},25000);blob=new Blob([await readBytes(response,1000000,15000,{signal,maxTime:45000})],{type:'image/png'});
+    try{rgba=await pixels(blob);}catch{throw error('TILE_DECODE','Höhenkachel nicht als 256 × 256-Pixel-PNG lesbar.');}
+    check(signal);await cache?.set(tileKey,blob,7*24*3600000);break;
+   }catch(e){check(signal);send(onProgress,{phase:'terrain',status:'attempt-failed',tile,service,attempt:attempt+1,code:e.code,httpStatus:e.status});if(attempt||['RATE_LIMIT','HTTP'].includes(e.code))throw e;await pause(500,signal);}
+   check(signal);
+  }catch(e){e.diagnostics={...e.diagnostics,tile,service,completedTiles:done,totalTiles:jobs.length};throw e;}
+  const h=new Float32Array(65536);for(let i=0;i<h.length;i++)h[i]=rgba[i*4]*256+rgba[i*4+1]+rgba[i*4+2]/256-32768;tiles.set(x+','+y,h);done++;send(onProgress,{phase:'terrain',status:'tiles',done,total:jobs.length,detail:`${done} von ${jobs.length} Höhenkacheln empfangen`});
  }};
  await Promise.all(Array.from({length:Math.min(4,jobs.length)},work));
  const values=[];for(let r=0;r<rows;r++)for(let c=0;c<cols;c++){
@@ -229,5 +255,5 @@ async function terrainData(bounds,signal,onProgress,cache,refresh=false){
  return {cols,rows,values,zoom:z,spacing:Math.max(info.w/(cols-1),info.h/(rows-1)),source:'Mapzen / AWS Terrain Tiles (Terrarium)',attribution:'https://github.com/tilezen/joerd/blob/master/docs/attribution.md',tileCount:jobs.length};
 }
 const loader=createDataLoader();
-Object.assign(R,{request,osmQuery,poiQuery,searchPlace,reverseRegion,tileXY,readJSONLimited,createDataLoader,mergeOSM,splitBounds,loadMap:loader.loadMap,getOSMLayer:loader.getOSMLayer,loaderDiagnostics:loader.diagnostics,server:false});
+Object.assign(R,{europeBounds,request,osmQuery,poiQuery,searchPlace,reverseRegion,tileXY,readJSONLimited,createDataLoader,mergeOSM,splitBounds,loadMap:loader.loadMap,getOSMLayer:loader.getOSMLayer,loaderDiagnostics:loader.diagnostics,server:false});
 })(globalThis.RS);

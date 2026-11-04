@@ -22,7 +22,8 @@ function boundsInfo(b) {
 function validateBounds(b,mode='model') {
  if(!Array.isArray(b)||b.length!==4||!b.every(Number.isFinite)||b[0]>=b[2]||b[1]>=b[3]||b[0]<-180||b[2]>180||b[1]<-80||b[3]>80) throw Error('Ungültiger Kartenausschnitt.');
  const d=boundsInfo(b),poster=mode==='poster',maxSide=poster?24000:12000,maxArea=poster?240e6:80e6;
- if(d.w<100||d.h<100||d.w>maxSide||d.h>maxSide||d.w*d.h>maxArea)throw Error(poster?'Poster-Ausschnitt: maximal 24 km pro Seite und 240 km² Gesamtfläche. Für sehr große Städte zuerst die Karte verkleinern oder einen spezialisierten Kartendatenanbieter konfigurieren.':'3D-Ausschnitt: maximal 12 km pro Seite und 80 km². Für größere Städte den Poster-Modus nutzen oder einen kleineren Relief-Ausschnitt wählen.');
+ if(d.w<99.999999||d.h<99.999999)throw Object.assign(Error(`Ausschnitt zu klein: ${Math.round(d.w)} × ${Math.round(d.h)} m; mindestens 100 m je Seite.`),{code:'AREA_TOO_SMALL',diagnostics:{widthM:d.w,heightM:d.h,minimumM:100}});
+ if(d.w>maxSide||d.h>maxSide||d.w*d.h>maxArea)throw Error(poster?'Poster-Ausschnitt: maximal 24 km pro Seite und 240 km² Gesamtfläche. Für sehr große Städte zuerst die Karte verkleinern oder einen spezialisierten Kartendatenanbieter konfigurieren.':'3D-Ausschnitt: maximal 12 km pro Seite und 80 km². Für größere Städte den Poster-Modus nutzen oder einen kleineren Relief-Ausschnitt wählen.');
  return b;
 }
 function normalized(b,coords) {
@@ -306,7 +307,7 @@ function cleanSettings(input={}) {
 function validateProject(p) {
  if(!p||![2,3].includes(p.version)||!p.data||!p.settings)throw Error('Keine gültige Relief-Studio-Projektdatei (Version 2 oder 3). Bitte eine .relief.json-Datei öffnen, kein Bild oder PDF.');
  const d=p.data;validateBounds(d.bounds,p.settings.mode);
- if(!d.terrain||!Array.isArray(d.terrain.values)||d.terrain.values.length!==d.terrain.cols*d.terrain.rows||d.terrain.cols<2||d.terrain.rows<2||d.terrain.cols>1025||d.terrain.rows>1025||!d.terrain.values.every(x=>Number.isFinite(x)&&x>=-12000&&x<10000))throw Error('Ungültiges Höhenraster.');
+ if(!d.terrain||!Number.isInteger(d.terrain.cols)||!Number.isInteger(d.terrain.rows)||!Array.isArray(d.terrain.values)||d.terrain.values.length!==d.terrain.cols*d.terrain.rows||d.terrain.cols<2||d.terrain.rows<2||d.terrain.cols>1025||d.terrain.rows>1025||!d.terrain.values.every(x=>Number.isFinite(x)&&x>=-12000&&x<10000))throw Object.assign(Error('Ungültiges Höhenraster. Erwartet: ganze Spalten- und Zeilenzahl (2–1025) und genau ein gültiger Höhenwert pro Rasterpunkt.'),{code:'IMPORT_TERRAIN_GRID',diagnostics:{cols:d.terrain?.cols,rows:d.terrain?.rows,actualValues:d.terrain?.values?.length}});
  for(const k of ['buildings','roads','water','parks','landmarks'])if(!Array.isArray(d[k])||d[k].length>100000)throw Error('Ungültige Kartenobjekte.');
  let points=0;
  for(const f of [...d.buildings,...d.water,...d.parks]){
@@ -315,7 +316,7 @@ function validateProject(p) {
  }
  for(const f of d.roads){if(!Array.isArray(f.points))throw Error('Ungültige Straße.');points+=f.points.length;for(const p of f.points)if(!Array.isArray(p)||p.length!==2||!p.every(Number.isFinite))throw Error('Ungültige Straßenkoordinaten.');}
  if(points>2000000)throw Error('Projekt ist zu komplex.');
- for(const b of d.buildings)if(!Number.isFinite(b.height)||b.height<=0||b.height>1000)throw Error('Ungültige Gebäudehöhe.');
+ for(const b of d.buildings)if(!Number.isFinite(b.height)||b.height<=0||b.height>1000)throw Object.assign(Error('Ungültige Gebäudehöhe. Erwartet: mehr als 0 und höchstens 1000 m.'),{code:'IMPORT_HEIGHT',diagnostics:{objectId:String(b.id||'unbekannt'),height:b.height}});
  for(const l of d.landmarks)if(!Array.isArray(l.point)||l.point.length!==2||!l.point.every(Number.isFinite))throw Error('Ungültige Wahrzeichen.');
  return {version:3,settings:cleanSettings(p.settings),data:d};
 }

@@ -11,7 +11,7 @@
 <body data-mode="choose">
 <header class="topbar">
 <a aria-label="Relief Studio Startseite" class="brand" href="#" id="home"><img alt="" height="36" src="favicon.svg" width="36"/><span>Relief<span class="brand-light">Studio</span><small>RELIEF MAP ATELIER</small></span></a>
-<div class="project-state"><span class="dot"></span><span id="project-state">Neues Projekt</span><span class="version">15</span></div>
+<div class="project-state"><span class="dot"></span><span id="project-state">Neues Projekt</span><span class="version">19</span></div>
 <nav aria-label="Projektaktionen" class="header-actions"><button class="ghost" hidden="" id="switch-mode">Modus wechseln</button><button class="ghost" id="new-project">＋ Neu</button><button class="ghost" id="open-project">Öffnen</button><button class="ghost" disabled="" hidden="" id="save-project">Speichern</button><button class="primary" hidden="" id="export-top">Exportieren <span>↗</span></button></nav>
 </header>
 <div class="access-note" hidden="" id="access-note"></div>
@@ -34,7 +34,7 @@
 <div class="city-presets"><button data-city="weinheim">Weinheim</button><button data-city="heidelberg">Heidelberg</button><button data-city="mannheim">Mannheim</button><button data-city="foz">Foz</button><button data-city="newyork">New York</button></div>
 <div class="section-title"><h3>Kartenausschnitt</h3><span class="badge">GEOGRAFISCH</span></div>
 <p class="hint">Größe direkt eingeben, Auswahl verschieben oder an den vier Ecken ziehen.</p>
-<div class="field-grid"><label>Breite <span class="unit-input"><input data-setting="widthKm" max="24" min="0.1" step="0.1" type="number"/><em>km</em></span></label><label>Höhe <span class="unit-input"><input data-setting="heightKm" max="24" min="0.1" step="0.1" type="number"/><em>km</em></span></label></div>
+<div class="field-grid"><label>Breite <span class="unit-input"><input data-setting="widthKm" max="24" min="0.1" step="0.001" type="number"/><em>km</em></span></label><label>Höhe <span class="unit-input"><input data-setting="heightKm" max="24" min="0.1" step="0.001" type="number"/><em>km</em></span></label></div>
 <div class="ratio-buttons"><button data-ratio="1">Quadrat</button><button data-ratio="0.75">3 : 4</button><button data-ratio="0.666667">2 : 3</button><button data-ratio="1.5">3 : 2</button></div>
 <div class="field-grid"><label>Breitengrad<input data-setting="lat" max="80" min="-80" step="0.0001" type="number"/></label><label>Längengrad<input data-setting="lon" max="180" min="-180" step="0.0001" type="number"/></label></div>
 <div class="inline-buttons"><button class="secondary" id="draw-area">▧ Bereich zeichnen</button><button class="ghost" id="fit-area" title="Auswahl in der Karte zentrieren">Zentrieren</button></div>
@@ -149,7 +149,7 @@
 </div>
 <div class="stage-bottom"><div class="stat"><span id="metric-a-label">AUSSCHNITT</span><strong id="metric-a">3,20 × 3,00 km</strong></div><div class="stat"><span id="metric-b-label">MODELLGRÖẞE INKL. RAHMEN</span><strong id="metric-b">208 × 196 mm</strong></div><div class="stat"><span id="metric-c-label">DATENSTATUS</span><strong id="metric-c">Noch nicht geladen</strong></div><button class="quality-button" id="quality-toggle">Datenqualität <span>↗</span></button></div>
 <div class="quality-panel" hidden="" id="quality-panel"><h3>Was im Modell steckt.</h3><div id="quality-content"><p>Die Datenqualität wird nach dem Laden angezeigt.</p></div></div>
-<footer class="main-footer"><span>RELIEF STUDIO <b>16.0</b></span><span>Echte Geografie. Bewusste Gestaltung.</span><button class="text-button" id="help">Hilfe &amp; Quellen</button></footer>
+<footer class="main-footer"><span>RELIEF STUDIO <b>19.0</b></span><span>Echte Geografie. Bewusste Gestaltung.</span><button class="text-button" id="help">Hilfe &amp; Quellen</button></footer>
 </main>
 </div>
 <div aria-live="polite" class="toast" hidden="" id="toast" role="status"></div>

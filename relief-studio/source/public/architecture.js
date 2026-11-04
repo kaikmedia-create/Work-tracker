@@ -1,4 +1,4 @@
-/* Relief Studio 15. Robust exact-footprint, 2.5D solid construction.
+/* Relief Studio 18. Robust exact-footprint, 2.5D solid construction.
  * Terrain triangles and architectural roof planes are partitioned in XY.
  * Only the upper envelope is kept; vertical seams are stitched into one closed
  * surface, rather than rasterising buildings or exporting intersecting shells.
@@ -141,11 +141,14 @@ function roofPieces(pieces,frame,spec,foot,scale){
    patches.push([A,B,C]);if(j)patches.push([A,C,D]);
   }
  }
- for(const poly of pieces){let remaining=[poly];
-  for(const triangle of patches){const cut=tidy(triangle.map(p=>p.slice(0,2)));if(!cut.length)continue;const next=[];
-   for(const p of remaining){const split=splitBy(p,cut);next.push(...split.outside);if(split.inside.length)out.push(make(split.inside,planeFrom3(...triangle)));}remaining=next;
-  }
-  for(const p of remaining)out.push(make(p,[0,0,z0]));
+ // The sector triangles have disjoint interiors. Clipping a footprint against each
+ // triangle independently avoids repeatedly subdividing fragments outside the dome.
+ const outer=tidy(Array.from({length:sectors},(_,k)=>at(1,k*Math.PI*2/sectors).slice(0,2)));
+ const tiles=patches.map(triangle=>{const poly=tidy(triangle.map(p=>p.slice(0,2)));return {poly,box:bbox(poly),plane:planeFrom3(...triangle)};}).filter(t=>t.poly.length);
+ for(const poly of pieces){const bb=bbox(poly),border=splitBy(poly,outer);
+  if(!border.inside.length){out.push(make(poly,[0,0,z0]));continue;}
+  for(const p of border.outside)out.push(make(p,[0,0,z0]));
+  for(const tile of tiles)if(intersects(bb,tile.box)){const hit=splitBy(poly,tile.poly).inside;if(hit.length)out.push(make(hit,tile.plane));}
  }return out;
 }
 function architecturePatches(data,s,terrainAt,w,h,scale){
@@ -155,15 +158,16 @@ function architecturePatches(data,s,terrainAt,w,h,scale){
  for(let i=0;i<data.buildings.length;i++){
   const b=data.buildings[i],tag=b.tags||{},override=s.landmarkOverrides[b.id]||{};
   if(!b.rings?.length)continue;
-  if(b.rings.reduce((n,r)=>n+r.length,0)>5000){throw Error('Ein Gebäude hat mehr als 5.000 Grundrisspunkte. Bitte einen kleineren Ausschnitt wählen.');}
+  const points=b.rings.reduce((n,r)=>n+r.length,0);if(points>5000)throw Object.assign(Error(`Der Grundriss hat ${points} Punkte; zulässig sind 5.000.`),{code:'FOOTPRINT_LIMIT',diagnostics:{objectId:b.id,points,limit:5000}});
   const rings=b.rings.map(r=>{const p=r.map(p=>[(p[0]-.5)*w,(.5-p[1])*h]);if(p.length>1&&eq(p[0],p.at(-1)))p.pop();return p;});
   if(rings[0].length<3)continue;
-  let polys=decompose(rings).map(p=>splitBy(p,border).inside).filter(p=>p.length);
+  let pieces;try{pieces=decompose(rings);}catch(e){e.code='FOOTPRINT_INVALID';e.diagnostics={objectId:b.id,points};throw e;}
+  let polys=pieces.map(p=>splitBy(p,border).inside).filter(p=>p.length);
   if(!polys.length)continue;
   // Building parts replace only their footprint, not the entire main nave.
   for(const id of b.partIds||[]){const part=parents.get(id);if(!part)continue;
    const cutters=decompose(part.rings.map(r=>r.map(p=>[(p[0]-.5)*w,(.5-p[1])*h])));
-   for(const cutter of cutters){polys=polys.flatMap(p=>intersects(bbox(p),bbox(cutter))?splitBy(p,cutter).outside:[p]);}
+   for(const cutter of cutters){polys=polys.flatMap(p=>{if(!intersects(bbox(p),bbox(cutter)))return [p];const cut=splitBy(p,cutter);return cut.inside.length?cut.outside:[p];});}
   }
   if(!polys.length)continue;
   const all=polys.flat(),sample=all.map(p=>terrainAt(p[0]/w+.5,.5-p[1]/h)),foot=Math.max(...sample);
@@ -289,6 +293,63 @@ function stitchSurface(faces,W,H,stats){
    xyZ[a].push(evalZ(f.plane,xy[a]));
   }
  }
+
+  // Repair only split endpoints reported by the planar seam graph, not every
+  // building. A microscopic A-B-C crack is an XY topology defect: adding a
+  // higher roof patch cannot remove it. Keep a deterministic representative.
+  const aliases=new Map(),root=id=>{while(aliases.has(id))id=aliases.get(id);return id;};
+  let seamWelds=0,maxSeamShift=0;const members=new Map();
+  const atBorder=(a,b)=>[[0,-W/2],[0,W/2],[1,-H/2],[1,H/2]].some(([k,s])=>Math.abs(a[k]-s)<1e-5&&Math.abs(b[k]-s)<1e-5);
+  for(let pass=0;pass<3;pass++){
+   const points=new Set();
+   for(const list of edges.values())if(list.length!==2&&!((list.length===1)&&atBorder(xy[list[0].a],xy[list[0].b])))
+    for(const e of list){points.add(e.a);points.add(e.b);}
+   const tolerance=1e-5,near=new Map();let changed=0;
+   for(const id of points){
+    const a=xy[id],ix=Math.floor(a[0]/tolerance),iy=Math.floor(a[1]/tolerance);
+    for(let dx=-1;dx<=1;dx++)for(let dy=-1;dy<=1;dy++)for(const other of near.get((ix+dx)+','+(iy+dy))||[]){
+     const u=root(id),v=root(other);if(u===v)continue;
+     const distance=Math.hypot(xy[u][0]-xy[v][0],xy[u][1]-xy[v][1]);
+     if(distance<=tolerance){
+      const keep=Math.min(u,v),drop=Math.max(u,v),ids=[...(members.get(keep)||[keep]),...(members.get(drop)||[drop])];
+      const shift=Math.max(...ids.map(i=>Math.hypot(xy[i][0]-xy[keep][0],xy[i][1]-xy[keep][1])));
+      if(shift>tolerance)continue;
+      aliases.set(drop,keep);members.set(keep,ids);members.delete(drop);changed++;maxSeamShift=Math.max(maxSeamShift,shift);
+     }
+    }
+    const key=ix+','+iy;if(!near.has(key))near.set(key,[]);near.get(key).push(id);
+   }
+   if(!changed)break;seamWelds+=changed;edges.clear();for(const zs of xyZ)zs.length=0;
+   for(let i=0;i<faces.length;i++){
+    const f=faces[i],ids=cleanCycle(f.edgeSegments.flatMap(e=>e.ids.slice(0,-1)).map(root));f.boundaryIds=ids;
+    if(ids.length<3||Math.abs(area(ids.map(id=>xy[id])))<1e-18){f.boundaryIds=[];continue;}
+    for(let j=0;j<ids.length;j++){const a=ids[j],b=ids[(j+1)%ids.length],key=a<b?a+','+b:b+','+a;
+     if(!edges.has(key))edges.set(key,[]);edges.get(key).push({a,b,f:i});xyZ[a].push(evalZ(f.plane,xy[a]));
+    }
+   }
+  }
+  stats.xySeamWelds=seamWelds;stats.maxXYSeamShift=maxSeamShift;
+
+ // A long edge and a reversed chain of shorter collinear edges are the SAME
+ // planar boundary even when their line-group keys rounded differently. Reuse
+ // existing vertices only; require the entire opposite chain to exist first.
+ const ek=(a,b)=>a<b?a+','+b:b+','+a;
+ const singles=[...edges.values()].filter(es=>es.length===1&&!atBorder(xy[es[0].a],xy[es[0].b])).map(es=>es[0]);
+ stats.chainSplits=0;
+ if(singles.length<=2048){
+  const ids=[...new Set(singles.flatMap(e=>[e.a,e.b]))];
+  for(const e of singles){const key=ek(e.a,e.b);if(edges.get(key)?.length!==1)continue;
+   const a=xy[e.a],b=xy[e.b],dx=b[0]-a[0],dy=b[1]-a[1],l2=dx*dx+dy*dy;if(l2<1e-18)continue;
+   const pts=[];for(const id of ids){if(id===e.a||id===e.b)continue;const p=xy[id],x=p[0]-a[0],y=p[1]-a[1],t=(x*dx+y*dy)/l2;
+    if(t>0&&t<1&&Math.abs(dx*y-dy*x)<=1e-7*Math.sqrt(l2))pts.push([t,id]);}
+   if(!pts.length)continue;pts.sort((a,b)=>a[0]-b[0]);const path=[e.a,...pts.map(p=>p[1]),e.b];
+   if(!path.slice(1).every((v,i)=>{const use=edges.get(ek(path[i],v));return use?.length===1&&use[0].a===v&&use[0].b===path[i]&&use[0].f!==e.f;}))continue;
+   const f=faces[e.f],idx=f.boundaryIds.findIndex((v,i,ar)=>v===e.a&&ar[(i+1)%ar.length]===e.b);if(idx<0)continue;
+   f.boundaryIds.splice(idx+1,0,...path.slice(1,-1));edges.delete(key);
+   for(const id of path.slice(1,-1))xyZ[id].push(evalZ(f.plane,xy[id]));
+   for(let i=1;i<path.length;i++)edges.get(ek(path[i-1],path[i])).push({a:path[i-1],b:path[i],f:e.f});stats.chainSplits++;
+  }
+ }
  const positions=[],classes=[],indices=[],vertexMap=new Map(),heightIndex=new Map();
  function v3(id,z,kind){
   const p=xy[id],v=[Math.fround(p[0]),Math.fround(p[1]),Math.fround(z)],key=v.join(',');let i=vertexMap.get(key);
@@ -389,6 +450,7 @@ function retriangulateZeroArea(mesh){
 }
 const raster=R.buildMesh;
 function buildArchitecture(data,settings,repairs=[],attempt=0){
+ const tick=(step,done,total)=>R.meshProgress?.({step,done,total,pass:attempt+1});tick('Geländeraster',0,1);
  const s=R.cleanSettings(settings),info=R.boundsInfo(data.bounds),w=s.modelWidth,h=w*info.h/info.w,scale=w/info.w;
  // More terrain samples cannot recover missing DEM data. Buildings no longer
  // depend on this terrain resolution at all.
@@ -396,7 +458,10 @@ function buildArchitecture(data,settings,repairs=[],attempt=0){
  const terrain=raster({...data,buildings:[]},{...s,resolution:n,buildingFactor:0,landmarkFactor:1,landmarkWidth:1});
  let low=Infinity;for(const z of data.terrain.values)low=Math.min(low,z);
  const terrainAt=(u,v)=>s.base+Math.max(0,R.sampleTerrain(data.terrain,u,v)-low)*scale*s.terrainFactor;
- const {patches,stats}=architecturePatches(data,s,terrainAt,w,h,scale);
+ tick('Dachflächen',0,data.buildings.length);const {patches,stats}=architecturePatches(data,s,terrainAt,w,h,scale);
+ // Bound repair work by scene size, not a fixed 100-contact cutoff which rejects
+ // valid city blocks. Every repair is still subject to the final manifold check.
+ const repairLimit=Math.min(2048,Math.max(128,stats.buildings*2));stats.repairLimit=repairLimit;
  patches.push(...repairs);stats.contactRepairs=repairs.length;stats.repairPasses=attempt;
  if(s.frame>0){const X=w/2+s.frame,Y=h/2+s.frame;
   for(const poly of [[[-X,-Y],[X,-Y],[X,-h/2],[-X,-h/2]],[[-X,h/2],[X,h/2],[X,Y],[-X,Y]],[[-X,-h/2],[-w/2,-h/2],[-w/2,h/2],[-X,h/2]],[[w/2,-h/2],[X,-h/2],[X,h/2],[w/2,h/2]]])
@@ -411,6 +476,7 @@ function buildArchitecture(data,settings,repairs=[],attempt=0){
  }
  const faces=[],topCount=(cols-1)*(rows-1)*6,v=terrain.vertices,idx=terrain.indices;
  for(let i=0;i<topCount;i+=3){
+  if(i%24576===0)tick('Flächen verbinden',i/3,topCount/3);
   const ids=[idx[i],idx[i+1],idx[i+2]],points=ids.map(id=>{const x=(id%cols)/(cols-1)*W-W/2,y=H/2-Math.floor(id/cols)/(rows-1)*H;return [x,y,terrain.classes[id]===4?terrainAt(x/w+.5,.5-y/h):v[id*3+2]];}),poly=tidy(points.map(p=>p.slice(0,2))),plane=planeFrom3(...points);
   if(!poly.length)continue;const cell=Math.floor(i/6),candidates=bins.get(cell)||[];
   let local=[{poly,plane,kind:terrain.classes[ids[0]],box:bbox(poly)}];
@@ -419,18 +485,18 @@ function buildArchitecture(data,settings,repairs=[],attempt=0){
   if(faces.length>800000)throw Error('Modell überschreitet das sichere Detailbudget. Bitte kleineren Ausschnitt wählen.');
  }
  let result;
- try{result=stitchSurface(faces,W,H,stats);}
+ tick('Kanten verbinden',0,faces.length);try{result=stitchSurface(faces,W,H,stats);}
  catch(e){
   if(!e.contacts)throw e;
-  if(attempt>=4||repairs.length+e.contacts.length>100){
+  if(attempt>=4||repairs.length+e.contacts.length>repairLimit){
    const failure=Error('Die Gebäudekontakte benötigen eine genauere Prüfung. Das fehlerhafte Modell wurde nicht zum Export freigegeben.');
-   failure.code='GEOMETRY_CONTACTS';failure.diagnostics={attempt,contactCount:e.contacts.length,repairCount:repairs.length,buildings:stats.buildings,contacts:e.contacts.slice(0,24)};throw failure;
+   failure.code='GEOMETRY_CONTACTS';failure.diagnostics={attempt,contactCount:e.contacts.length,repairCount:repairs.length,repairLimit,buildings:stats.buildings,contacts:e.contacts.slice(0,24)};throw failure;
   }
   const additions=e.contacts.map(c=>contactPatch(c.a,c.b,c.plane,c.kind,W,H,attempt)).filter(Boolean);
   if(!additions.length)throw e;
   return buildArchitecture(data,settings,repairs.concat(additions),attempt+1);
  }
- const degenerate=retriangulateZeroArea(result);
+ tick('Geschlossenen Körper prüfen',0,result.indices.length/3);const degenerate=retriangulateZeroArea(result);
  stats.zeroAreaRetriangulations=degenerate.fixed;
  // Two footprints touching at a single XY point create a non-manifold vertical
  // edge. Regularise ONLY the reported contacts, initially 0.004 mm wide
@@ -441,7 +507,10 @@ function buildArchitecture(data,settings,repairs=[],attempt=0){
  }
  const bad=[...usage].filter(([,v])=>v[0]!==2||v[1]!==0);
  if(bad.length){
-  if(attempt>=4||repairs.length+bad.length>100)throw Error('Die Gebäudegeometrie enthält eine nicht druckbare Naht. Das fehlerhafte Modell wurde nicht zum Export freigegeben.');
+  if(attempt>=4||repairs.length+bad.length>repairLimit){
+    const failure=Error('Die Gebäudegeometrie enthält eine nicht druckbare Naht. Das fehlerhafte Modell wurde nicht zum Export freigegeben.');
+    failure.code='GEOMETRY_SEAM';failure.diagnostics={attempt,repairCount:repairs.length,repairLimit,badEdges:bad.length,buildings:stats.buildings,xySeamWelds:stats.xySeamWelds,maxXYSeamShift:stats.maxXYSeamShift};throw failure;
+   }
   const additions=[];
   for(const [key,val] of bad){
    const ai=Math.floor(key/count)*3,bi=(key%count)*3,a=[vs[ai],vs[ai+1]],b=[vs[bi],vs[bi+1]],dx=b[0]-a[0],dy=b[1]-a[1],len2=dx*dx+dy*dy;
@@ -454,7 +523,7 @@ function buildArchitecture(data,settings,repairs=[],attempt=0){
  }
  if(degenerate.remaining)throw Error('Eine flächenlose Gebäudenaht konnte nicht aufgelöst werden. Kein fehlerhaftes Modell wurde exportiert.');
  let zmax=0;for(let i=2;i<result.vertices.length;i+=3)zmax=Math.max(zmax,result.vertices[i]);
- return {...result,width:W,height:H,zmax,grid:[0,0],cell:terrain.cell,kind:'architecture',architectureVersion:12,geometryKernelVersion:15,architecture:stats,missed:stats.omitted,estimated:stats.heightEstimated,buildingCount:stats.buildings,terrainGrid:terrain.grid};
+ return {...result,width:W,height:H,zmax,grid:[0,0],cell:terrain.cell,kind:'architecture',architectureVersion:12,geometryKernelVersion:18,architecture:stats,missed:stats.omitted,estimated:stats.heightEstimated,buildingCount:stats.buildings,terrainGrid:terrain.grid};
 }
 Object.assign(R,{buildRasterMesh:raster,buildMesh:buildArchitecture,architecture:{decompose,roofSpec,roofFrame,roofPieces,half,overlay,stitchSurface,buildArchitecture}});
 })(globalThis.RS);

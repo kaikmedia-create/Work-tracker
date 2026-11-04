@@ -1,13 +1,13 @@
 {
-  "version": "18.0.0",
+  "version": "19.0.0",
   "account": "kaikmedia-create",
   "repository": "kaikmedia-create/Work-tracker",
   "folder": "relief-studio",
   "target": "github-pages",
   "status": "requires-deployment-check",
-  "base_commit": "b80ae709c42fe3824dc69992db10d1f04232aa1d",
+  "base_commit": "6b69f8b58dceeb510f10a9935aeab5c2216b5402",
   "entry": "index.html",
-  "gate": "gate-v18.js",
+  "gate": "gate-v19.js",
   "base_package": "bundle10.json",
   "updates": [
     "upgrade11.json",
@@ -18,70 +18,14 @@
     "upgrade15.json",
     "upgrade16.json",
     "upgrade17.json",
-    "upgrade18.json"
+    "upgrade18.json",
+    "upgrade19.json"
   ],
-  "source_in_repository": "SHA-256-verified release17 and release18 deltas; npm prestart/pretest materialise exact tested source via source/tools/prepare_release18.mjs.",
+  "source_in_repository": "Runtime, source delta and prepare_release19.mjs; public source verified against the released gate.",
   "checks": {
-    "release": "18.0.0",
-    "date": "2026-11-03",
-    "baseline": "b80ae709c42fe3824dc69992db10d1f04232aa1d",
-    "node": {
-      "passed": 195,
-      "failed": 0
-    },
-    "browser": {
-      "passed": 8,
-      "failed": 0,
-      "realWorker": true,
-      "fixture": "user-supplied complete diagnostic",
-      "freshPublicDownload": false
-    },
-    "weinheim": {
-      "extentKm": [
-        3.2,
-        3
-      ],
-      "modelWidthMm": 200,
-      "inputObjects": 6346,
-      "outputObjects": 6344,
-      "omittedFailures": 0,
-      "triangles": 1155772,
-      "vertices": 577888,
-      "badEdges": 0,
-      "components": 1,
-      "zeroAreaTriangles": 0,
-      "contactRepairs": 109,
-      "repairPasses": 1,
-      "xySeamWelds": 1,
-      "maxXYSeamShiftMm": 3.425045429873244e-07,
-      "nonOutputRecords": "One parent already represented by its parts; one record wholly outside selected bounds."
-    },
-    "olderWeinheimRegression": {
-      "inputObjects": 3294,
-      "outputObjects": 3294,
-      "triangles": 612546,
-      "badEdges": 0,
-      "components": 1,
-      "omittedFailures": 0
-    },
-    "independentExports": {
-      "formats": [
-        "STL",
-        "3MF"
-      ],
-      "passed": 2,
-      "watertight": true,
-      "consistentWinding": true,
-      "components": 1,
-      "zeroAreaTriangles": 0,
-      "browserDownloadsByteIdentical": true,
-      "sha256": {
-        "stl": "22b4ac93f6b11bc54face3f90b9ec63ee0e41b3806f0c9d35b559297e0a39e3f",
-        "3mf": "5010b2924b6760421f14b7b0e54a8361e33675d7b82b21a92a9868a615bbfb90"
-      }
-    },
-    "physicalPrintTested": false,
-    "privateInputIncluded": false
+    "release": "19.0.0",
+    "runner": "npm test; diagnostic19_ui.py; cities19_live.py",
+    "liveDataProbeRun": 41795513922
   },
   "gating": "static preview PIN; not server-side access control",
   "code_commit": null,

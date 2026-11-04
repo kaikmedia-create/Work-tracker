@@ -41,7 +41,7 @@ function notify(text,type='info',action=null,issue=null,context={}){
  $('notice-title').textContent={info:'Hinweis',success:'Erledigt',warning:'Bitte beachten',error:'Das hat nicht funktioniert'}[type]||'Hinweis';
  $('notice-message').textContent=text;
  const diagnostic=$('notice-diagnose');
- if(type==='error'){R.diagnostics.capture(issue||text,{...context,message:text});}
+ if(type==='error'){const r=R.diagnostics.capture(issue||text,{...context,message:text});$('notice-title').textContent=r.stage+' · '+r.code;$('notice-message').textContent=r.displayMessage;}
  if(diagnostic){diagnostic.hidden=type!=='error';diagnostic.onclick=()=>{try{R.diagnostics.download();}catch(e){diagnostic.textContent='Download fehlgeschlagen';diagnostic.title=e.message;}};}
  $('notice-action').hidden=!action;if(action){$('notice-action').textContent=action.label;$('notice-action').onclick=action.run;}
 }R.notify=notify;
@@ -85,14 +85,14 @@ function updateStepUI(){
 }
 function showChoice(){
  if(abort||exporting){explain('Bitte den laufenden Abruf oder Export zuerst beenden.');return;}
- started=false;$('welcome').hidden=false;document.querySelector('.workspace').hidden=true;document.body.dataset.mode='choose';
+ stopBuild();started=false;$('welcome').hidden=false;document.querySelector('.workspace').hidden=true;document.body.dataset.mode='choose';
  for(const id of ['switch-mode','export-top','save-project'])$(id).hidden=true;
  document.querySelector('.welcome-note').textContent=data?'Deine geladenen Kartendaten und Einstellungen bleiben beim Moduswechsel erhalten.':'Deine Projekte bleiben bei dir. Kein Kundenkonto nötig.';
  window.scrollTo({top:0});
 }
 function chooseMode(mode,{buildModel=true}={}){
  if(!['poster','model'].includes(mode))return;
- const previous=settings.mode;
+ const previous=settings.mode;if(previous!==mode)stopBuild();
  if(mode==='poster'&&!data&&previous!=='poster'){settings.contours=false;settings.hillshade=false;}
  if(mode==='model'&&previous!=='model')mesh=null;settings.mode=mode;started=true;document.querySelector('.main').prepend($('notice'));document.body.dataset.mode=mode;$('welcome').hidden=true;document.querySelector('.workspace').hidden=false;
  for(const id of ['switch-mode','export-top','save-project'])$(id).hidden=false;
@@ -190,11 +190,16 @@ function markerControls(){
  }
  if(list.length>250){const note=document.createElement('p');note.className='hint';note.textContent='250 Einträge sichtbar. Bitte Suche oder Kategorie nutzen, um weitere Orte zu finden.';box.append(note);}
 }
+function stopBuild(){
+ clearTimeout(buildTimer);buildTimer=null;buildId++;building=false;
+ const pending=[...modelResolvers.values()];modelResolvers.clear();
+ if(pending.length){worker?.terminate();worker=null;for(const p of pending)p.reject(new DOMException('Modellberechnung abgebrochen','AbortError'));}
+}
 function makeWorker(){
  try{
   const inline=globalThis.RS_WORKER_SOURCE,url=inline?URL.createObjectURL(new Blob([inline],{type:'application/javascript'})):'worker.js';
   worker=new Worker(url);if(inline)URL.revokeObjectURL(url);
-  worker.onmessage=e=>{const {id,result,error,diagnostics,code,stack}=e.data,pending=modelResolvers.get(id);modelResolvers.delete(id);
+  worker.onmessage=e=>{const {id,result,error,diagnostics,code,stack}=e.data,pending=modelResolvers.get(id);if(e.data.progress){pending?.progress(e.data.progress);return;}modelResolvers.delete(id);
    if(error){const failure=Error(error);Object.assign(failure,{code,diagnostics});if(stack)failure.stack=stack;pending?.reject(failure);}else pending?.resolve(result);
   };
   worker.onerror=event=>{const failure=Error(event.message||'Modellberechnung wurde unterbrochen.');failure.code='WORKER_ERROR';
@@ -203,28 +208,31 @@ function makeWorker(){
  }catch(e){worker=null;R.diagnostics.event('Worker',{status:'unavailable',detail:e.message});}
 }
 makeWorker();
-async function build(){
- if(!data||settings.mode!=='model'||data.terrain.available===false)return false;
- const id=++buildId;building=true;mesh=null;labels();const inputSettings=R.cleanSettings(settings),source=data,startedAt=Date.now();
+async function build(signal){
+ if(!data||settings.mode!=='model')return false;
+ if(data.terrain.available===false){notify('Für das 3D-Modell fehlen Höhenwerte.','error',null,Object.assign(Error('Das gespeicherte Poster enthält kein Gelände. Den Ausschnitt im 3D-Modus laden.'),{code:'MODEL_NO_TERRAIN'}),{stage:'Geländedaten'});return false;}
+ stopBuild();if(signal?.aborted)return false;
+ const id=++buildId;const cancel=()=>{if(id===buildId)stopBuild();};signal?.addEventListener('abort',cancel,{once:true});building=true;mesh=null;labels();const inputSettings=R.cleanSettings(settings),source=data,startedAt=Date.now();
  R.diagnostics.event('3D-Geometrie',{status:'started',buildId:id,count:source.buildings.length});
  if(!worker)makeWorker();
  try{
   let result;if(worker){result=await new Promise((resolve,reject)=>{
-   const timer=setTimeout(()=>{if(!modelResolvers.has(id))return;worker?.terminate();worker=null;
-    const error=Error('Die Modellberechnung hat ihr Zeitlimit erreicht. Die Kartendaten bleiben erhalten.');error.code='MODEL_TIMEOUT';
-    for(const p of modelResolvers.values())p.reject(error);modelResolvers.clear();
-   },120000);
-   modelResolvers.set(id,{resolve:r=>{clearTimeout(timer);resolve(r);},reject:e=>{clearTimeout(timer);reject(e);}});
+   let timer,lastStep='Start';const maxMs=360000,idleMs=120000;
+   function arm(){clearTimeout(timer);timer=setTimeout(()=>{if(!modelResolvers.has(id))return;worker?.terminate();worker=null;
+    const elapsed=Date.now()-startedAt,hard=elapsed>=maxMs-10;
+    const e=Object.assign(Error((hard?'Gesamtzeit von 360 s erreicht.':'Seit 120 s kein neuer Rechenschritt.')+' Letzter Schritt: '+lastStep+'. Die Kartendaten bleiben erhalten.'),{code:'MODEL_TIMEOUT',diagnostics:{elapsedMs:elapsed,limitMs:hard?maxMs:idleMs,reason:hard?'total':'idle',lastStep,buildId:id,buildings:source.buildings.length}});
+    for(const p of modelResolvers.values())p.reject(e);modelResolvers.clear();},Math.max(0,Math.min(idleMs,maxMs-(Date.now()-startedAt))));}arm();
+   modelResolvers.set(id,{progress:p=>{lastStep=p.step;arm();R.diagnostics.event('3D-Geometrie',{status:'progress',buildId:id,phase:p.step,done:p.done,total:p.total,attempt:p.pass});if(abort)$('loader-detail').textContent=p.step+' · Durchlauf '+p.pass;},resolve:r=>{clearTimeout(timer);resolve(r);},reject:e=>{clearTimeout(timer);reject(e);}});
    worker.postMessage({id,data:source,settings:inputSettings});
   });}else{await nextFrame();result=R.buildMesh(source,inputSettings);}
-  if(id!==buildId||source!==data)return false;
+  if(id!==buildId||source!==data||signal?.aborted)return false;
   mesh=result;ensureViewer();viewer?.setMesh(mesh,settings);$('model-empty').hidden=!!viewer;quality();
   R.diagnostics.event('3D-Geometrie',{status:'done',buildId:id,count:result.indices.length/3,durationMs:Date.now()-startedAt});return true;
  }catch(e){
-  if(id===buildId)notify(e.message,'error',null,e,{stage:'3D-Geometrie',settings:inputSettings,data:source});return false;
- }finally{if(id===buildId){building=false;labels();}}
+  if(id===buildId&&e.name!=='AbortError')notify(e.message,'error',null,e,{stage:'3D-Geometrie',settings:inputSettings,data:source});return false;
+ }finally{signal?.removeEventListener('abort',cancel);if(id===buildId){building=false;labels();}}
 }
-function scheduleBuild(){if(settings.mode!=='model'||!data)return;clearTimeout(buildTimer);buildId++;building=true;mesh=null;labels();buildTimer=setTimeout(build,220);}
+function scheduleBuild(){if(settings.mode!=='model'||!data)return;stopBuild();building=true;mesh=null;labels();buildTimer=setTimeout(()=>build(),220);}
 function preview(){
  if(!data){$('poster-paper').hidden=true;return;}if(currentView==='design'){previewDesign();return;}if(currentView!=='poster')return;$('poster-empty').hidden=true;$('poster-paper').hidden=false;
  try{
@@ -308,8 +316,8 @@ function progress(event,value){
 }
 
 async function load(){
- if(abort||exporting)return;try{R.validateBounds(bounds,settings.mode);}catch(e){notify(e.message,'error',null,e);return;}
- const controller=new AbortController(),epoch=++loadEpoch;abort=controller;R.diagnostics.event('Kartendaten',{status:'started'});
+ if(abort||exporting)return;try{R.validateBounds(bounds,settings.mode);}catch(e){R.diagnostics.begin('Ausschnitt',{bounds:bounds.slice()});notify(e.message,'error',null,e,{stage:'Ausschnitt',data:null});return;}
+ stopBuild();$('notice').hidden=true;const controller=new AbortController(),epoch=++loadEpoch;abort=controller;R.diagnostics.begin('Kartendaten',{city:settings.title,bounds:bounds.slice(),widthKm:settings.widthKm,heightKm:settings.heightKm});
  $('loader').hidden=false;$('loader-title').textContent=settings.mode==='poster'?'Deine Posterkarte entsteht.':'Dein Stadtrelief entsteht.';$('cancel-load').hidden=false;resetLoader(settings.mode==='model'||settings.contours||settings.hillshade);labels();const selected=bounds.slice();
  try{
   const loaded=await R.loadMap(selected,{signal:controller.signal,onProgress:progress,refresh:$('force-refresh').checked,mode:settings.mode,terrainRequired:settings.mode==='model'||settings.contours||settings.hillshade});
@@ -318,12 +326,12 @@ async function load(){
   if(data&&custom.length&&data.bounds.every((v,i)=>Math.abs(v-selected[i])<1e-5))loaded.landmarks.push(...custom);
   const sameLoadedArea=data&&data.bounds.every((v,i)=>Math.abs(v-selected[i])<1e-5);data=loaded;mesh=null;if(!sameLoadedArea)settings.landmarkOverrides={};landmarkControls();markerControls();
   if(settings.autoSubtitle)resolveRegion();
-  if(settings.mode==='model'){progress('Geschlossenes Relief wird berechnet');await build();if(!mesh){panel('model');quality();return;}}
+  if(settings.mode==='model'){progress('Geschlossenes Relief wird berechnet');await build(controller.signal);if(controller.signal.aborted)throw new DOMException('Abgebrochen','AbortError');if(!mesh){panel('model');quality();return;}}
   panel(settings.mode==='poster'?'style':'model');quality();preview();
   const coastWarnings=(data.warnings||[]).filter(w=>/Küste|Küsten|Meer|Meeresfläche/.test(w));
   const historicWarnings=(data.warnings||[]).filter(w=>/historische Orte|Sehenswürdigkeiten/i.test(w));
   notify(`${number(data.buildings.length,0)} Gebäude und ${number(data.roads.length,0)} Straßen-/Wasserlinien geladen.${data.terrain.available===false?' Für dieses 2D-Poster wurde kein Gelände benötigt.':' Echtes Gelände ist enthalten.'} ${coastWarnings.length?coastWarnings.slice(0,2).join(' '):historicWarnings.length?historicWarnings[0]:'Projekt über „Speichern“ sichern.'}`,coastWarnings.length||historicWarnings.length?'warning':'success');
- }catch(e){controller.abort();if(e.name==='AbortError')notify('Laden abgebrochen. Deine vorherigen Kartendaten bleiben erhalten.','info');else notify('Karte konnte nicht geladen werden: '+e.message+' Bereits vollständig geladene Pakete bleiben für „Erneut versuchen“ erhalten.','error',{label:'Erneut versuchen',run:()=>{$('force-refresh').checked=false;load();}},e,{stage:'Kartendaten'});}
+ }catch(e){controller.abort();if(e.name==='AbortError')notify(loadActivity==='model'?'Modellberechnung abgebrochen. Die vollständig geladenen Kartendaten bleiben erhalten.':'Laden abgebrochen. Deine vorherigen Kartendaten bleiben erhalten.','info');else notify(e.message,'error',{label:'Erneut versuchen',run:()=>{$('force-refresh').checked=false;load();}},e,{stage:'Kartendaten',data:data&&data.bounds.every((v,i)=>Math.abs(v-bounds[i])<1e-7)?data:null});}
  finally{if(epoch===loadEpoch){abort=null;clearInterval(loadClock);loadClock=null;$('loader').hidden=true;labels();}}
 }
 function download(blob,name){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),45000);}
@@ -332,10 +340,10 @@ async function prepareExport(){
  const blocked=commonReason();if(blocked){explain(blocked);return;}exporting=true;labels();$('loader').hidden=false;$('loader-title').textContent='Druckdatei wird vorbereitet.';$('cancel-load').hidden=true;$('loader-phases').replaceChildren();$('loader-idle').textContent='Der Export wird lokal berechnet.';$('loader-overall').textContent='Exportvorgang';$('loader-elapsed').textContent='';availability('export-poster','Die Druckdatei wird vorbereitet.');await nextFrame();
  try{const result=await R.exportPoster(data,settings,progress);const name=`${slug()}-${settings.paperW}x${settings.paperH}mm${result.dpi?'-'+Math.round(result.dpi)+'dpi':''}.${result.extension}`;pendingExport={...result,name};$('export-result').textContent=result.summary;$('export-filename').textContent=name;$('export-details').textContent=`${number(result.blob.size,0)} von 8.000.000 Byte · ${result.vector?'RGB · Vektor':'RGB · Rasterbild'}`;$('file-icon').textContent=result.extension.toUpperCase();$('export-warnings').replaceChildren();
  const warnings=[...result.warnings];if(stale())warnings.push('Der geänderte Ausschnitt wurde noch nicht geladen. Diese Datei verwendet die zuletzt geladenen Kartendaten.');for(const text of warnings){const p=document.createElement('p');p.className='warning';p.textContent=text;$('export-warnings').append(p);}$('export-dialog').showModal();}
- catch(e){notify(e.message,'error',null,e);}finally{exporting=false;$('loader').hidden=true;labels();}
+ catch(e){notify(e.message,'error',null,e,{stage:'Export '+String(settings.format).toUpperCase()});}finally{exporting=false;$('loader').hidden=true;labels();}
 }
-function sources(){return `RELIEF STUDIO 10\n${settings.title}\n\nAusschnitt (West, Süd, Ost, Nord): ${data.bounds.join(', ')}\nAbgerufen: ${data.capturedAt||'nicht angegeben'}\nOSM-Stand: ${data.osmTimestamp||'nicht angegeben'}\n\nKartendaten © OpenStreetMap-Mitwirkende — ODbL 1.0\nhttps://www.openstreetmap.org/copyright\n\nGelände: ${data.terrain.source||'Import'}\nQuellen/Lizenzen: https://github.com/tilezen/joerd/blob/master/docs/attribution.md\n\nGebäudehöhen: ausdrückliche OSM-Höhe, Geschosszahl × 3 m oder gekennzeichneter Standardwert.\nGeländeüberhöhung: ${settings.terrainFactor*100} %\nGebäudeüberhöhung: ${settings.buildingFactor*100} %\nZusätzliche Wahrzeichenüberhöhung: ${settings.landmarkFactor*100} %\n\nGrundrissgenaues 2.5D-Relief mit erfassten Dachformen, kein vermessenes Architekturmodell. Unbekannte Höhen werden geschätzt; erhöhte Teile werden für den Druck zum Boden unterstützt. Farben nur Vorschau.\nQuellenhinweise bei Weitergabe und Verkauf berücksichtigen; diese Datei ist keine Rechtsberatung.\n`;}
-async function modelExport(type){const blocked=modelReason();if(blocked){explain(blocked);return;}exporting=true;labels();notify('3D-Datei wird zusammengestellt.');await nextFrame();try{const blob=type==='stl'?new Blob([R.stl(mesh)],{type:'model/stl'}):R.model3mf(mesh,settings.title);download(blob,slug()+'.'+type);download(new Blob([sources()],{type:'text/plain;charset=utf-8'}),slug()+'-quellen.txt');notify(`${type.toUpperCase()} exportiert · ${number(blob.size/1e6,1)} MB · Maße in mm. Bitte Slicer prüfen.`);}catch(e){notify(e.message,'error',null,e);}finally{exporting=false;labels();}}
+function sources(){return `RELIEF STUDIO 19\n${settings.title}\n\nAusschnitt (West, Süd, Ost, Nord): ${data.bounds.join(', ')}\nAbgerufen: ${data.capturedAt||'nicht angegeben'}\nOSM-Stand: ${data.osmTimestamp||'nicht angegeben'}\n\nKartendaten © OpenStreetMap-Mitwirkende — ODbL 1.0\nhttps://www.openstreetmap.org/copyright\n\nGelände: ${data.terrain.source||'Import'}\nQuellen/Lizenzen: https://github.com/tilezen/joerd/blob/master/docs/attribution.md\n\nGebäudehöhen: ausdrückliche OSM-Höhe, Geschosszahl × 3 m oder gekennzeichneter Standardwert.\nGeländeüberhöhung: ${settings.terrainFactor*100} %\nGebäudeüberhöhung: ${settings.buildingFactor*100} %\nZusätzliche Wahrzeichenüberhöhung: ${settings.landmarkFactor*100} %\n\nGrundrissgenaues 2.5D-Relief mit erfassten Dachformen, kein vermessenes Architekturmodell. Unbekannte Höhen werden geschätzt; erhöhte Teile werden für den Druck zum Boden unterstützt. Farben nur Vorschau.\nQuellenhinweise bei Weitergabe und Verkauf berücksichtigen; diese Datei ist keine Rechtsberatung.\n`;}
+async function modelExport(type){const blocked=modelReason();if(blocked){explain(blocked);return;}R.diagnostics.begin('Export '+type.toUpperCase(),{format:type,city:settings.title});exporting=true;labels();notify('3D-Datei wird zusammengestellt.');await nextFrame();try{const blob=type==='stl'?new Blob([R.stl(mesh)],{type:'model/stl'}):R.model3mf(mesh,settings.title);download(blob,slug()+'.'+type);R.diagnostics.event('Export',{status:'download-angefordert',format:type,bytes:blob.size});notify(`${type.toUpperCase()} exportiert · ${number(blob.size/1e6,1)} MB · Maße in mm. Bitte Slicer prüfen und den Quellennachweis separat herunterladen.`,'success',{label:'Quellen herunterladen',run:()=>download(new Blob([sources()],{type:'text/plain;charset=utf-8'}),slug()+'-quellen.txt')});}catch(e){notify(e.message,'error',null,e,{stage:'Export '+type.toUpperCase()});}finally{exporting=false;labels();}}
 for(const [key,size] of Object.entries(R.paperSizes)){const opt=document.createElement('option');opt.value=key;opt.textContent=key==='custom'?'Eigene Maße':key+(key.startsWith('A')?` · ${size[0]} × ${size[1]} mm`:'');$('paper').append(opt);}
 for(const [key,p] of Object.entries(R.palettes)){const button=document.createElement('button');button.type='button';button.dataset.theme=key;const swatch=document.createElement('span');swatch.style.background=`linear-gradient(130deg,${p.paper} 0 46%,${p.major} 47% 53%,${p.water} 54%)`;const label=document.createElement('small');label.textContent=p.name;button.append(swatch,label);button.addEventListener('click',()=>{settings.style=key;controls();persist();preview();if(mesh)viewer?.setMesh(mesh,settings);});$('themes').append(button);}
 all('[data-setting]').forEach(el=>el.addEventListener(el.type==='range'||el.type==='text'?'input':'change',()=>{
@@ -358,7 +366,7 @@ all('[data-city]').forEach(b=>b.addEventListener('click',()=>{
 $('draw-area').onclick=()=>{view('area');map.drawMode=!map.drawMode;$('draw-area').classList.toggle('selected',map.drawMode);notify(map.drawMode?'Zwei gegenüberliegende Ecken durch Ziehen festlegen.':'Zeichnen beendet.');};$('fit-area').onclick=()=>map.fit();$('map-plus').onclick=()=>{map.zoom=R.clamp(map.zoom+1,3,19);map.draw();};$('map-minus').onclick=()=>{map.zoom=R.clamp(map.zoom-1,3,19);map.draw();};
 $('load-data').onclick=$('empty-load').onclick=load;$('cancel-load').onclick=()=>abort?.abort();
 $('search-form').onsubmit=async e=>{e.preventDefault();searchAbort?.abort();searchAbort=new AbortController();const result=$('search-results');result.textContent='Ort wird gesucht …';try{const places=await R.searchPlace($('search').value,searchAbort.signal);result.replaceChildren();if(!places.length)result.textContent='Kein Ort gefunden. Koordinaten können direkt eingetragen werden.';for(const p of places){const b=document.createElement('button');b.type='button';b.textContent=p.label;b.onclick=()=>{settings={...settings,lon:p.lon,lat:p.lat,title:p.name,region:p.region,countryCode:p.countryCode,countryName:p.country,autoSubtitle:true};
-  settings.subtitle=R.subtitleForLocation(p.region,p.countryCode,p.country);controls();updateBounds(true);view('area');result.replaceChildren();resolveRegion();};result.append(b);}}catch(e){if(e.name!=='AbortError')result.textContent='Suche nicht verfügbar: '+e.message;}};
+  settings.subtitle=R.subtitleForLocation(p.region,p.countryCode,p.country);controls();updateBounds(true);view('area');result.replaceChildren();resolveRegion();};result.append(b);}}catch(e){if(e.name!=='AbortError'){result.textContent='Suche nicht verfügbar: '+e.message;notify(e.message,'error',null,e,{stage:'Ortssuche'});}}};
 $('region-refresh').onclick=()=>{settings.autoSubtitle=true;controls();resolveRegion();};
 $('marker-filter').onchange=e=>{markerFilter=e.target.value;markerControls();};
 $('marker-search').oninput=e=>{markerQuery=e.target.value.toLocaleLowerCase('de').trim().slice(0,100);markerControls();};
@@ -392,8 +400,8 @@ $('model-preset').onclick=()=>{Object.assign(settings,{terrainFactor:1,buildingF
 $('export-top').onclick=()=>{panel('export');if(commonReason())explain(commonReason());};$('export-poster').onclick=prepareExport;$('export-stl').onclick=()=>modelExport('stl');$('export-3mf').onclick=()=>modelExport('3mf');$('export-sources').onclick=()=>data&&download(new Blob([sources()],{type:'text/plain;charset=utf-8'}),slug()+'-quellen.txt');
 $('download-ready').onclick=()=>{if(pendingExport){download(pendingExport.blob,pendingExport.name);$('export-dialog').close();}};$('close-export').onclick=()=>$('export-dialog').close();
 $('save-project').onclick=()=>{if(!data)return;const { _contours,...saved}=data;download(new Blob([JSON.stringify({version:3,settings,data:saved})],{type:'application/json'}),slug()+'.relief.json');notify('Projekt inklusive Kartendaten gespeichert.');};
-$('open-project').onclick=()=>$('project-file').click();$('project-file').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;try{if(f.size>35000000)throw Error('Projektdatei ist größer als 35 MB.');const p=R.validateProject(JSON.parse(await f.text()));abort?.abort();settings=p.settings;data=p.data;locationEpoch++;bounds=data.bounds.slice();const info=R.boundsInfo(bounds);Object.assign(settings,{lon:+info.lon.toFixed(6),lat:+info.lat.toFixed(6),widthKm:+(info.w/1000).toFixed(3),heightKm:+(info.h/1000).toFixed(3)});mesh=null;buildId++;building=false;map.setBounds(bounds,true);landmarkControls();markerControls();chooseMode(settings.mode,{buildModel:false});if(settings.autoSubtitle)resolveRegion();if(settings.mode==='model'&&!await build())return;preview();quality();notify('Projekt und enthaltene Kartendaten geöffnet. Gespeicherter Modus: '+(settings.mode==='poster'?'Poster.':'3D-Relief.'),'success');}catch(e){notify('Import: '+e.message,'error',null,e,{stage:'Import'});}};
-$('new-project').onclick=()=>{if(data&&!confirm('Neues Projekt starten? Ungespeicherte Änderungen gehen verloren.'))return;abort?.abort();data=mesh=null;buildId++;building=false;locationEpoch++;settings=R.cleanSettings();bounds=R.boundsFor(settings.lon,settings.lat,settings.widthKm,settings.heightKm);map.setBounds(bounds,true);$('model-empty').hidden=false;$('poster-empty').hidden=false;controls();persist();quality();landmarkControls();markerControls();panel('place');view('area');showChoice();};
+$('open-project').onclick=()=>$('project-file').click();$('project-file').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;R.diagnostics.begin('Import',{bytes:f.size});try{if(f.size>35000000)throw Error('Projektdatei ist größer als 35 MB.');const raw=JSON.parse(await f.text());if(raw?.diagnostics&&!raw.data)throw Object.assign(Error('Diese Diagnose enthält nur das Fehlerprotokoll, keine ladbaren Kartendaten.'),{code:'IMPORT_NO_DATA'});const p=R.validateProject(raw);abort?.abort();settings=p.settings;data=p.data;locationEpoch++;bounds=data.bounds.slice();const info=R.boundsInfo(bounds);Object.assign(settings,{lon:+info.lon.toFixed(6),lat:+info.lat.toFixed(6),widthKm:+(info.w/1000).toFixed(3),heightKm:+(info.h/1000).toFixed(3)});stopBuild();mesh=null;map.setBounds(bounds,true);landmarkControls();markerControls();chooseMode(settings.mode,{buildModel:false});if(settings.autoSubtitle)resolveRegion();if(settings.mode==='model'&&!await build())return;preview();quality();notify('Projekt und enthaltene Kartendaten geöffnet. Gespeicherter Modus: '+(settings.mode==='poster'?'Poster.':'3D-Relief.'),'success');}catch(e){notify('Import: '+e.message,'error',null,e,{stage:'Import'});}};
+$('new-project').onclick=()=>{if(data&&!confirm('Neues Projekt starten? Ungespeicherte Änderungen gehen verloren.'))return;abort?.abort();stopBuild();data=mesh=null;locationEpoch++;settings=R.cleanSettings();bounds=R.boundsFor(settings.lon,settings.lat,settings.widthKm,settings.heightKm);map.setBounds(bounds,true);$('model-empty').hidden=false;$('poster-empty').hidden=false;controls();persist();quality();landmarkControls();markerControls();panel('place');view('area');showChoice();};
 $('quality-toggle').onclick=()=>{$('quality-panel').hidden=!$('quality-panel').hidden;quality();};$('help').onclick=()=>$('help-dialog').showModal();$('close-help').onclick=()=>$('help-dialog').close();
 if(globalThis.RELIEF_SOURCE_FILES){$('download-code').hidden=false;$('download-code').onclick=()=>download(R.zip(globalThis.RELIEF_SOURCE_FILES),'relief-studio-source.zip');}
 if(globalThis.RELIEF_STATIC_PREVIEW){$('access-note').hidden=false;$('access-note').textContent='Private Vorschau mit PIN · statische Verschlüsselung, kein serverseitiger Zugangsschutz. Keine vertraulichen Kundendaten hinterlegen.';}
@@ -412,5 +420,5 @@ window.addEventListener('offline',()=>notify('Du bist offline. Gespeicherte Proj
 
 if(!globalThis.RELIEF_STATIC_PREVIEW&&location.protocol!=='file:')fetch('api/status',{signal:AbortSignal.timeout(2500),headers:{Accept:'application/json'}}).then(r=>r.ok?r.json():null).then(j=>{if(j?.application==='relief-studio'&&j.server===true){R.server=true;$('logout-form').hidden=false;}}).catch(()=>{});
 // Diagnostics are local only. The interface exposes no credentials or remote administration.
-Object.defineProperty(globalThis,'ReliefStudio',{value:{get settings(){return {...settings};},get data(){return data;},get mesh(){return mesh;},get building(){return building;},view,exportPoster:()=>R.exportPoster(data,settings),get mode(){return settings.mode;},get started(){return started;},get panel(){return currentPanel;},version:'16.0.0'}});
+Object.defineProperty(globalThis,'ReliefStudio',{value:{get settings(){return {...settings};},get data(){return data;},get mesh(){return mesh;},get building(){return building;},view,exportPoster:()=>R.exportPoster(data,settings),get mode(){return settings.mode;},get started(){return started;},get panel(){return currentPanel;},version:'19.0.0'}});
 })(globalThis.RS);
