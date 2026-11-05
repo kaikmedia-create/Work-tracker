@@ -220,11 +220,11 @@ function measuredRoof(polys,item,foot,scale,w,h,manual){
 // courtyards, arbitrary building=yes, mapped flat roofs, parts or synthetic training data.
 function neighbourhoodRoofs(data){
  const dim=R.boundsInfo(data.bounds),cells=new Map(),types=new Set(['house','detached','semidetached_house','terrace','residential','apartments']);
- function descriptor(b){const t=b.tags||{},k=t.building;if(!types.has(k)||b.landmark||b.name||t.historic||t.amenity||t.tourism||t.heritage||t.man_made||t['building:part']||b.partIds?.length||b.detailRoof||b.rings?.length!==1)return null;
-  const ring=b.rings[0],bb=R.ringBox(ring),area=Math.abs(ring.reduce((sum,p,i)=>{const q=ring[(i+1)%ring.length];return sum+p[0]*q[1]-p[1]*q[0];},0))/2*dim.w*dim.h;if(area<24||area>1200)return null;
+ function descriptor(b){const t=b.tags||{},generic=t.building==='yes'&&t['addr:housenumber']&&t['addr:street']&&!t.shop&&!t.office&&!t.leisure&&!t.sport&&!t.barrier,k=generic?'house':t.building;if(!types.has(k)||b.landmark||b.name||t.historic||t.amenity||t.tourism||t.heritage||t.man_made||t['building:part']||b.partIds?.length||b.detailRoof||b.rings?.length!==1)return null;
+  const ring=b.rings[0],bb=R.ringBox(ring),area=Math.abs(ring.reduce((sum,p,i)=>{const q=ring[(i+1)%ring.length];return sum+p[0]*q[1]-p[1]*q[0];},0))/2*dim.w*dim.h;if(area<24||area>1200||generic&&(area<45||area>240||ring.length>13))return null;
   return {group:['house','detached','semidetached_house'].includes(k)?'house':k,x:(bb[0]+bb[2])*dim.w/2,y:(bb[1]+bb[3])*dim.h/2,area};}
  const key=(g,x,y)=>g+':'+x+':'+y;
- for(const b of data.buildings){const shape=b.tags?.['roof:shape']||b.tags?.['building:roof:shape'];if(!shape)continue;const d=descriptor(b);if(!d)continue;const k=key(d.group,Math.floor(d.x/200),Math.floor(d.y/200));if(!cells.has(k))cells.set(k,[]);cells.get(k).push({...d,shape,id:b.id});}
+ for(const b of data.buildings){if(b.tags?.building==='yes')continue;const shape=b.tags?.['roof:shape']||b.tags?.['building:roof:shape'];if(!shape)continue;const d=descriptor(b);if(!d)continue;const k=key(d.group,Math.floor(d.x/200),Math.floor(d.y/200));if(!cells.has(k))cells.set(k,[]);cells.get(k).push({...d,shape,id:b.id});}
  return b=>{const d=descriptor(b);if(!d||b.tags?.['roof:shape']||b.tags?.['building:roof:shape']||String(b.tags?.['roof:levels'])==='0'||String(b.tags?.['roof:height'])==='0')return null;
   const xx=Math.floor(d.x/200),yy=Math.floor(d.y/200),near=[];for(let i=xx-1;i<=xx+1;i++)for(let j=yy-1;j<=yy+1;j++)for(const a of cells.get(key(d.group,i,j))||[]){const dist=Math.hypot(a.x-d.x,a.y-d.y);if(a.id!==b.id&&a.area/d.area>=.5&&a.area/d.area<=2&&dist<=200)near.push([dist,a]);}
   near.sort((a,b)=>a[0]-b[0]);const ids=new Set(),votes=new Map();for(const [,a] of near){if(ids.has(a.id))continue;ids.add(a.id);votes.set(a.shape,1+(votes.get(a.shape)||0));if(ids.size===8)break;}
@@ -233,6 +233,7 @@ function neighbourhoodRoofs(data){
 function architecturePatches(data,s,terrainAt,w,h,scale){
  const out=[],stats={referenceModels:0,referenceFaces:0,plainFootprints:0,buildings:0,roofTagged:0,roofEstimated:0,heightEstimated:0,unsupportedRoofs:0,walls:0,minHeightFilled:0,omitted:0,parts:0};
  const border=[[-w/2,-h/2],[w/2,-h/2],[w/2,h/2],[-w/2,h/2]];
+ // Optional OSM tree points: no random parks, no invented street positions.
  const lookupRoof=roofLookup(data),localShape=s.architectureMode==='context'?neighbourhoodRoofs(data):()=>null;stats.contextRoofs=0;stats.underground=0;stats.measuredRoofs=0;stats.roofSources=[];
  const parents=new Map();for(const b of data.buildings){if(!parents.has(b.id))parents.set(b.id,[]);parents.get(b.id).push(b);}
  for(let i=0;i<data.buildings.length;i++){
@@ -279,6 +280,12 @@ function architecturePatches(data,s,terrainAt,w,h,scale){
   if(spec.unsupported)stats.unsupportedRoofs++;
   if(spec.minHeight>0)stats.minHeightFilled++;
  }
+ stats.treeCrowns=0;if(Array.isArray(data.trees)&&data.trees.length){const bounds=data.buildings.map(b=>R.ringBox(b.rings[0])),taken=[];
+ for(const t of data.trees.slice(0,2500)){if(stats.treeCrowns>=450)break;if(!Array.isArray(t?.point)||t.point.length!==2||!t.point.every(Number.isFinite))continue;const [u,v]=t.point,rad=R.clamp(Number(t.diameter)||5,1,35)*scale/2,rx=rad/w,ry=rad/h;if(u<=rx||v<=ry||u>=1-rx||v>=1-ry||rad<.10)continue;
+ if(bounds.some(b=>b[0]<=u+rx&&b[2]>=u-rx&&b[1]<=v+ry&&b[3]>=v-ry))continue;const X=(u-.5)*w,Y=(.5-v)*h;if(taken.some(([x,y,r])=>Math.hypot(X-x,Y-y)<=rad+r+.015))continue;taken.push([X,Y,rad]);const base=terrainAt(u,v),H=R.clamp(Number(t.height)||8,2,70)*scale;const h0=base+H*.24,h1=base+H*(t.conifer?.45:.80),h2=base+H;
+ const at=(i,f,z)=>[X+Math.cos(i*Math.PI/4)*rad*f,Y+Math.sin(i*Math.PI/4)*rad*f,z];const face=(a,b,c)=>{const poly=[a,b,c].map(p=>p.slice(0,2));out.push({poly,box:bbox(poly),plane:planeFrom3(a,b,c),kind:5,building:-2});};
+ for(let i=0;i<8;i++){const A=at(i,1,h0),B=at(i+1,1,h0),C=at(i+1,.55,h1),D=at(i,.55,h1);face(A,B,C);face(A,C,D);face(D,C,[X,Y,h2]);}stats.treeCrowns++;}}
+
  return {patches:out,stats};
 }
 // Return nonoverlapping convex top faces after laying one roof patch over them.

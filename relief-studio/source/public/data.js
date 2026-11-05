@@ -58,7 +58,7 @@ function osmQuery(b,layer='base'){
  // clipping relation members on the server would create false coastlines/holes.
  return `[out:json][timeout:25][maxsize:134217728][bbox:${boxText(b)}];(${layer!=='relations'?WAY_FILTERS:''}${layer!=='geometry'?REL_FILTERS:''});out geom qt;${layer==='geometry'?'':'relation[type=building];out body qt;'}`; 
 }
-function poiQuery(b){return `[out:json][timeout:8][maxsize:33554432][bbox:${boxText(b)}];(nwr[historic][name];nwr[heritage][name];nwr[man_made~"^(tower|lighthouse)$"][name];nwr[tourism~"^(museum|artwork|attraction|gallery|viewpoint)$"][name];nwr[amenity=place_of_worship][name];);out center qt;`;}
+function poiQuery(b){return `[out:json][timeout:8][maxsize:33554432][bbox:${boxText(b)}];(node[natural=tree];nwr[historic][name];nwr[heritage][name];nwr[man_made~"^(tower|lighthouse)$"][name];nwr[tourism~"^(museum|artwork|attraction|gallery|viewpoint)$"][name];nwr[amenity=place_of_worship][name];);out center qt;`;}
 // The cache has a stable name and bounded disk + RAM usage. Storage never blocks a
 // network load indefinitely (Safari private mode / blocked IDB upgrades included).
 function createCache(){
@@ -103,7 +103,7 @@ function createDataLoader(options={}){
  }
  function completePackage(raw){return raw&&Array.isArray(raw.elements)&&!raw.remark;}
  function allowed(){if(Date.now()<cooldown)throw error('RATE_LIMIT',`Kartendienst-Pause: noch ${Math.ceil((cooldown-Date.now())/1000)} s. Bereits geladene Pakete bleiben gespeichert.`,{retryAt:cooldown});}
- function keyFor(b,layer){return 'osm12:'+layer+':'+b.map(x=>x.toFixed(6)).join(',');}
+ function keyFor(b,layer){return (layer==='pois'?'tree29:':'osm12:')+layer+':'+b.map(x=>x.toFixed(6)).join(',');}
  async function getOSMLayer(b,signal,layer,onProgress,opts={}){
   const key=keyFor(b,layer),phase=layer==='pois'?'pois':'base';check(signal);
   if(!opts.refresh){const saved=await cache.get(key);check(signal);if(completePackage(saved)){send(onProgress,{phase,status:'cached',detail:'Datenpaket aus lokalem Speicher.'});return saved;}}

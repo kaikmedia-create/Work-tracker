@@ -47,6 +47,8 @@
 <div class="callout"><strong id="load-info-title">Die Grundlage für dein Original.</strong><p id="load-info-text">Gebäude, Straßen und Gewässer aus OpenStreetMap.</p></div><p aria-live="polite" class="action-reason" id="load-reason"></p></section>
 <section aria-label="3D-Modell einstellen" class="panel" data-mode-only="model" hidden="" id="panel-model">
 <h2>Charakter in jeder Ebene.</h2>
+<label for="city-surface">Stadtoberfläche<select id="city-surface" data-setting="surfaceMode"><option value="auto">Messdaten bevorzugen</option><option value="classic">Klassisches Kartenrelief</option></select></label>
+<p id="surface-state" class="hint" aria-live="polite">Misst Dachlandschaften und Baumkronen, soweit der ganze Ausschnitt abgedeckt ist. Sonst bleibt das Kartenrelief aktiv.</p><p class="hint">Straßenprofile, Gewässergravur und einzelne Wahrzeichen lassen sich im klassischen Kartenrelief gestalten. Messdaten zeigen die aufgenommene Oberfläche, keine Fassadenfotos.</p>
 <div class="section-title"><h3>Physische Größe</h3><span class="badge">3D-DRUCK</span></div>
 <div class="field-grid"><label>Kartenbreite<span class="unit-input"><input data-setting="modelWidth" max="600" min="30" step="5" type="number"/><em>mm</em></span></label><label>Bodenstärke<span class="unit-input"><input data-setting="base" max="15" min="1" step="0.5" type="number"/><em>mm</em></span></label></div>
 <p class="hint">Die Höhe folgt dem geografischen Seitenverhältnis. Rahmen kommt außen hinzu.</p>
@@ -68,8 +70,6 @@
 <div class="landmarks" id="landmark-list"><p class="hint">Nach dem Laden erscheinen die vorhandenen Wahrzeichen.</p></div>
 <label for="architecture-mode">Gebäudedetails<select id="architecture-mode" data-setting="architectureMode"><option value="context">Kartierte Formen + lokale Wohnhaus-Schätzung</option><option value="mapped">Nur kartierte Dachformen und Referenzen</option></select></label><p class="hint">Nur bei übereinstimmenden Nachbarhäusern wird ein fehlendes Sattel- oder Walmdach geschätzt. Für Wahrzeichen werden keine Dächer aus der Nachbarschaft erfunden.</p>
 <label class="check"><input type="checkbox" data-setting="worldBuildings" checked> Weltweite Gebäudedaten beim Laden abgleichen</label><button type="button" class="secondary full" id="world-refresh">Weltweite Gebäudedaten abgleichen</button><p class="hint">3DBAG: passende vermessene Dachflächen in den Niederlanden. Overture Maps: ergänzt weltweit fehlende Angaben über die OpenStreetMap-ID. Keine privaten Projekte werden hochgeladen. Auch bei Ausfall bleibt die Karte nutzbar.</p>
-<details><summary>3D-Gebäude aus eigener Quelle</summary><p class="hint">Für alle Regionen: vollständige, triangulierte Dachflächen als GeoJSON (WGS84, Höhen über Gebäudegrund). Erforderlich: source, height_reference: ground und je Feature properties.osm_id. Alternativ: regionales Dachhöhenpaket (rs-roofs-1). Der Import erfolgt lokal.</p><button class="secondary full" id="roof-import">Dachflächen importieren</button><input type="file" id="roof-file" accept=".geojson,.json" hidden></details>
-<button class="secondary full" id="model-preset">Maßstäbliche Höhen verwenden</button>
 </section>
 <section aria-label="Kartengestaltung" class="panel" hidden="" id="panel-style">
 <h2>Die Karte bekommt Charakter.</h2>

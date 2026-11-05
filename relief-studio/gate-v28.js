@@ -189,6 +189,7 @@ $('login').onsubmit=async e=>{
    if(await hash(files['public/app.js'])!=="e765ca153c64b806eb8fa2e54037ec197f9db90717a346d1854b93723daaf37a")throw Error('Prüfsumme der mobilen Oberfläche stimmt nicht.');
 
 
+  const delta=await(await get('upgrade28-survey.json')).json();const affected=["public/index.html", "public/app.js", "public/worker.js", "public/core.js", "public/data.js", "public/architecture.js"];if(delta.version!=='28-city29'||Object.keys(delta.changes||{}).length!==affected.length)throw Error('Stadtoberflächen-Update unvollständig.');for(const name of affected){const c=delta.changes[name];if(!c||await hash(files[name])!==c.base)throw Error('Stadtoberfläche: Quellstand '+name);const l=files[name].split('\n');for(const [i,n,add] of c.edits.slice().reverse())l.splice(i,n,...add);const z=l.join('\n');if(await hash(z)!==c.result)throw Error('Stadtoberfläche: Prüfsumme '+name);files[name]=z;}
   let html=files['public/index.html'];html=html.replace('<link rel="stylesheet" href="style.css">',()=>'<style>'+files['public/style.css']+'</style>');
   const icon='data:image/svg+xml;base64,'+btoa(unescape(encodeURIComponent(files['public/favicon.svg'])));
   html=html.replaceAll('href="favicon.svg"','href="'+icon+'"').replaceAll('src="favicon.svg"','src="'+icon+'"');
