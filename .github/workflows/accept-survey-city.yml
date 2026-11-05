@@ -1,0 +1,67 @@
+name: Surveyed city acceptance
+on:
+  push:
+    branches: [qa/city-survey-integration]
+    paths: [.github/workflows/accept-survey-city.yml]
+permissions:
+  contents: write
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+    - uses: actions/checkout@v4
+      with: {path: new}
+    - uses: actions/checkout@v4
+      with: {path: old, ref: f877c394a66fcf6917ba6bea6577b381d3c5c07b, persist-credentials: false}
+    - uses: actions/setup-node@v4
+      with: {node-version: 22}
+    - name: Complete source and PIN package with measured coverage and optional DOP20 appearance
+      run: |
+        set -eu
+        (cd old/relief-studio/source && node tools/prepare_release28.mjs)
+        cd new/relief-studio/source
+        sed -i 's/)\*32768\/2/)*32768/g' tools/finalize_city29.py
+        sed -i "s/'realData':True,/'realData':True,'coastlineVersion':8,/g" tests/survey_accept.py
+        python3 tools/finalize_city29.py "$GITHUB_WORKSPACE/old/relief-studio/source"
+        node tools/prepare_release28.mjs
+        mkdir -p "$GITHUB_WORKSPACE/output"
+        tar --exclude=survey29 --exclude=reports -czf "$GITHUB_WORKSPACE/output/source.tgz" public ../gate-v28.js ../upgrade28-survey.json ../index.html
+    - uses: actions/upload-artifact@v4
+      with: {name: verified-city-code, path: output/source.tgz, retention-days: 2}
+    - name: Prepare optional same-origin image atlases; measured model is independent of imagery
+      working-directory: new/relief-studio/source
+      run: |
+        python3 -m venv /tmp/colour-env
+        /tmp/colour-env/bin/pip -q install pillow
+        /tmp/colour-env/bin/python tools/prepare_city_colour.py public/survey29
+    - name: Stage candidate only
+      working-directory: new
+      run: |
+        git rm .github/workflows/accept-survey-city.yml
+        git add relief-studio
+        git config user.name 'Relief Studio CI'
+        git config user.email 'github-actions[bot]@users.noreply.github.com'
+        git commit -m 'Use measured urban surfaces automatically, retain documented fallback and offer aerial preview'
+        git push origin HEAD:refs/heads/candidate/survey-final-${GITHUB_RUN_ID}
+    - name: Regression check
+      working-directory: new/relief-studio/source
+      run: |
+        npm test > "$GITHUB_WORKSPACE/output/suite.log" || { grep -A15 '^not ok' "$GITHUB_WORKSPACE/output/suite.log" | cut -c1-300 | head -220; exit 1; }
+        tail -9 "$GITHUB_WORKSPACE/output/suite.log"
+    - name: Test real browser entry, measurement branches, GPU and downloadable STL
+      run: |
+        docker pull mcr.microsoft.com/playwright/python:v1.57.0-noble
+        python3 -m http.server 8199 --bind 127.0.0.1 --directory new >/tmp/site.log 2>&1 &
+        srv=$!;trap 'kill "$srv" || true' EXIT
+        docker run --rm --network=host --ipc=host -v "$PWD/new:/work:ro" -v "$PWD/output:/out" mcr.microsoft.com/playwright/python:v1.57.0-noble bash -ec 'pip -q install playwright==1.57.0; python /work/relief-studio/source/tests/survey_accept.py /out/screens http://127.0.0.1:8199/relief-studio/'
+    - uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: survey-qa
+        path: |
+          output/screens/*.png
+          output/screens/*.json
+          output/suite.log
+          new/relief-studio/source/public/survey29/colour.json
+        retention-days: 4
