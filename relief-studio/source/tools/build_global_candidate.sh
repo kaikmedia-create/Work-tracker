@@ -8,7 +8,7 @@ npm install --prefix /tmp/rs-vendor --ignore-scripts --no-audit --no-fund esbuil
 /tmp/rs-vendor/node_modules/.bin/esbuild /tmp/rs-vendor/node_modules/polygon-clipping/dist/polygon-clipping.esm.js --bundle --minify --format=esm --outfile=public/global-overlay.js
 for p in polygon-clipping splaytree robust-predicates;do
  dir=/tmp/rs-vendor/node_modules/$p; f=$(find "$dir" -maxdepth 1 \( -iname '*license*' -o -iname '*licence*' -o -iname 'copying*' \) -type f | head -1)
- if [ -z "$f" ];then echo "Read upstream notice for $p"; url=$(node -e "const p=require('$dir/package.json');console.log((p.repository.url||p.repository).replace(/^git\\+/, '').replace(/\\.git\$/, '').replace('git://','https://').replace('github.com','raw.githubusercontent.com'))");head=$(npm view "$p@$(node -p "require('$dir/package.json').version")" gitHead);test -n "$head";f=/tmp/notice-$p;for n in LICENSE LICENSE.md LICENSE.txt UNLICENSE LICENCE;do if curl -fsSL --max-time 8 "$url/$head/$n" -o "$f";then break;fi;done; fi
+ if [ -z "$f" ];then f=$(find "$dir" -maxdepth 1 -iname 'readme*' -type f|head -1);test -s "$f";grep -iq 'permission is hereby granted' "$f";fi
  test -s "$f";cp "$f" "public/global-$p-LICENSE.txt";done
 cp /tmp/rs-vendor/package-lock.json tools/global-vendor-lock.json
 python3 - <<'PY'
