@@ -1,0 +1,47 @@
+name: Global multi-scale STL quality
+on:
+  push:
+    branches: [qa/global-scale-export]
+permissions: {contents: read}
+jobs:
+  code:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with: {persist-credentials: false}
+    - run: tar -czf /tmp/global-source.tgz --exclude=relief-studio/source/public/survey29 relief-studio
+    - uses: actions/upload-artifact@v4
+      with: {name: global-source, path: /tmp/global-source.tgz, retention-days: 3}
+  scale:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix: {km: [2,5],region: [AF,EU,AS,NA,SA,OC]}
+    steps:
+    - uses: actions/checkout@v4
+      with: {persist-credentials: false}
+    - uses: actions/setup-node@v4
+      with: {node-version: 22}
+    - run: npm install --prefix /tmp/world-qa --ignore-scripts --no-audit --no-fund pngjs@7.0.0
+    - name: Fresh data, zero-request warm replay, STL round-trip geometry
+      working-directory: relief-studio/source
+      run: RS_PNG_MODULE=/tmp/world-qa/node_modules/pngjs node --max-old-space-size=5600 tests/global_exports.mjs '${{ matrix.region }}' /tmp/world '${{ matrix.km }}'
+    - if: always()
+      uses: actions/upload-artifact@v4
+      with: {name: 'scale-${{ matrix.km }}-${{ matrix.region }}',path: /tmp/world/*.json,retention-days: 3}
+  report:
+    if: always()
+    needs: scale
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/download-artifact@v4
+      with: {pattern: 'scale-*',path: results}
+    - run: |
+        python - <<'PY'
+        import json,glob
+        rows=[j for f in glob.glob('results/*/*.json') for j in json.load(open(f))]; open('matrix.json','w').write(json.dumps(rows,indent=2,ensure_ascii=False)); print('Tested',len(rows),'passed',sum(r['ok'] for r in rows));print([(r['place'],r['sizeKm'],r.get('error')) for r in rows if not r['ok']]);
+        PY
+    - uses: actions/upload-artifact@v4
+      with: {name: world-scale-summary,path: matrix.json,retention-days: 5}
