@@ -1,0 +1,28 @@
+name: Inspect global archive inputs
+on:
+  push:
+    branches: [dev/global-source-baseline]
+    paths: ['.github/workflows/inspect-global-archives.yml']
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: 22}
+      - name: Inspect original source layers, coordinates and missing tiles
+        working-directory: relief-studio/source
+        run: |
+          mkdir -p /tmp/archive-inputs
+          node --experimental-default-type=module --input-type=module <<'JS'
+          import fs from 'node:fs';import {PMTiles,VectorTile,Pbf} from './public/world-tiles.js';
+          const root='https://overturemaps-extras-us-west-2.s3.us-west-2.amazonaws.com/tiles/2026-10-21.0/',cases=JSON.parse(fs.readFileSync('tests/global_cases.json'));
+          const out={};for(const theme of ['buildings','transportation','base']){let p=new PMTiles(root+theme+'.pmtiles');let h=await p.getHeader(),m=await p.getMetadata();out[theme]={h,layers:m.vector_layers,examples:{},counts:[]};for(const [name,lon,lat] of cases){const z=Math.min(h.maxZoom,14),n=2**z,x=(Math.floor((lon+180)/360*n)+n)%n,y=Math.floor((1-Math.asinh(Math.tan(lat*Math.PI/180))/Math.PI)*n/2);const t=await p.getZxy(z,x,y);if(!t){out[theme].counts.push([name,0]);continue}fs.writeFileSync('/tmp/archive-inputs/'+theme+'-'+z+'-'+x+'-'+y+'.pbf',new Uint8Array(t.data));const v=new VectorTile(new Pbf(new Uint8Array(t.data)));out[theme].counts.push([name,Object.fromEntries(Object.entries(v.layers).map(([k,l])=>[k,l.length]))]);for(const [k,l] of Object.entries(v.layers)){if(!out[theme].examples[k]&&l.length)out[theme].examples[k]=l.feature(0).properties;}}
+          console.log(theme,h.maxZoom,Object.keys(out[theme].examples));}fs.writeFileSync('/tmp/archive-inputs/info.json',JSON.stringify(out));
+          JS
+      - uses: actions/upload-artifact@v4
+        with: {name: global-inputs, path: /tmp/archive-inputs/, retention-days: 2}
