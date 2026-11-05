@@ -1,0 +1,22 @@
+name: Global automatic source selection on simulated mobile browsers
+on:
+  push:
+    branches: [qa/global-auto-devices]
+permissions: {contents: read}
+jobs:
+  phone:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    strategy: {fail-fast: false,matrix: {engine: [webkit,chromium]}}
+    container: {image: 'mcr.microsoft.com/playwright/python:v1.57.0-noble',options: '--ipc=host'}
+    steps:
+    - uses: actions/checkout@v4
+      with: {persist-credentials: false}
+    - run: |
+        pip -q install playwright==1.57.0
+        python -m http.server 8178 --bind 127.0.0.1 --directory relief-studio/source/public >/tmp/http.log 2>&1 &
+        pid=$!;trap 'kill $pid || true' EXIT
+        python relief-studio/source/tests/global_auto_device.py '${{ matrix.engine }}' http://127.0.0.1:8178/ evidence
+    - if: always()
+      uses: actions/upload-artifact@v4
+      with: {name: 'device-${{ matrix.engine }}',path: evidence,retention-days: 4}
