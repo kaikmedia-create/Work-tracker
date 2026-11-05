@@ -1,0 +1,36 @@
+name: Global relief regression
+on:
+  push:
+    branches: [qa/global-touch-download]
+  pull_request:
+    paths: ['relief-studio/**']
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - working-directory: relief-studio/source
+        run: npm test
+  world:
+    needs: source
+    if: ${{ github.event_name != 'pull_request' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    strategy: {fail-fast: false, max-parallel: 6, matrix: {n: [0,1,2,3,4,5]}}
+    container: {image: 'mcr.microsoft.com/playwright/python:v1.57.0-noble', options: '--ipc=host'}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - name: Verify files exported through the actual application
+        run: |
+          python -m pip -q install playwright==1.57.0 numpy scipy
+          python -m http.server 8120 --bind 127.0.0.1 >/tmp/local.log 2>&1 & S=$!; trap 'kill "$S" || true' EXIT
+          python relief-studio/source/tests/atlas-browser.py http://127.0.0.1:8120/relief-studio/ evidence ${{ matrix.n }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: 'global-report-${{ matrix.n }}', path: 'evidence/matrix-*.json', retention-days: 7}

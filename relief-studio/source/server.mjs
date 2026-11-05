@@ -96,7 +96,7 @@ const server=http.createServer(async(req,res)=>{
  if(path.startsWith('/api/')){send(res,404,'API nicht gefunden.','text/plain');return;}
  let decoded;try{decoded=decodeURIComponent(path);}catch{send(res,400,'Ungültiger Pfad.');return;}
  const filename=resolve(ROOT,'.'+(decoded==='/'?'/index.html':decoded));if(!filename.startsWith(ROOT+sep)||decoded.includes('\0')){send(res,403,'Zugriff verweigert.');return;}
- const types={'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.svg':'image/svg+xml','.ico':'image/x-icon','.png':'image/png','.json':'application/json'};
+ const types={'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.mjs':'text/javascript; charset=utf-8','.svg':'image/svg+xml','.ico':'image/x-icon','.png':'image/png','.json':'application/json'};
  if(!types[extname(filename)]){send(res,404,'Nicht gefunden.');return;}
  try{const info=await stat(filename);if(!info.isFile())throw Error('not file');const content=await readFile(filename);send(res,200,req.method==='HEAD'?'':content,types[extname(filename)]);}catch{send(res,404,'Nicht gefunden.','text/plain');}
  }catch(e){const large=e.message==='Anfrage zu groß.',code=large?413:502;console.error('Request:',e.message);send(res,code,JSON.stringify({error:large?'Anfrage größer als 2 KB – abgelehnt.':'Anfrage fehlgeschlagen: '+String(e.message).slice(0,160)}),'application/json');}
