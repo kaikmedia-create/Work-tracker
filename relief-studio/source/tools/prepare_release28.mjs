@@ -10,7 +10,7 @@ for(const version of [17,18,19,20,21,22,23,24,25,26,27,28]){
 const phone=JSON.parse(await readFile(resolve(site,'upgrade28-phone.json'),'utf8'));
 if(phone.version!=='28-phone.1'||Object.keys(phone.changes).join(',')!=='public/app.js')throw Error('Invalid phone patch');
 chains.get('public/app.js').push(phone.changes['public/app.js']);
-const city=JSON.parse(await readFile(resolve(site,'upgrade28-survey.json'),'utf8'));for(const name of ["public/index.html", "public/app.js", "public/worker.js", "public/core.js", "public/data.js", "public/architecture.js"]){chains.get(name).push(city.changes[name]);}
+const city=JSON.parse(await readFile(resolve(site,'upgrade28-survey.json'),'utf8'));for(const [name,c] of Object.entries({...city.changes,...city.sourceChanges})){chains.get(name).push(c);}
 for(const [name,chain] of chains){
  if(!/^(?:public\/(?:data|app|diagnostics|architecture|core|worker|viewer)\.js|public\/index\.html|server\.mjs|tests\/v(?:12|13|14|15|16|17|18|19|20|21|22|23|24|25|26|27)_gate\.test\.mjs)$/.test(name))throw Error('Unsafe release path: '+name);
  const path=resolve(root,name);if(!path.startsWith(root+sep))throw Error('Unsafe target.');

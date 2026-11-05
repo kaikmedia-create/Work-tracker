@@ -838,5 +838,5 @@ function buildWithStreets(data,input){const s=R.cleanSettings(input),info=R.boun
  return addStreetRelief(mesh,data.roads,s,w,h,w/info.w);
 }
 
-Object.assign(R,{checkRoofPack,buildRasterMesh:raster,buildMesh:buildWithStreets,architecture:{neighbourhoodRoofs,roofLookup,measuredRoof,referenceFor,referencePatches,importRoofSurfaces,conformVerticalChains,smoothTerrainGrid,roadCurve,roadAnchors,decompose,roofSpec,roofFrame,roofPieces,half,overlay,stitchSurface,buildArchitecture}});
+Object.assign(R,{checkRoofPack,buildRasterMesh:raster,buildMesh:buildWithStreets,architecture:{architecturePatches,neighbourhoodRoofs,roofLookup,measuredRoof,referenceFor,referencePatches,importRoofSurfaces,conformVerticalChains,smoothTerrainGrid,roadCurve,roadAnchors,decompose,roofSpec,roofFrame,roofPieces,half,overlay,stitchSurface,buildArchitecture}});
 })(globalThis.RS);

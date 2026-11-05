@@ -103,7 +103,7 @@ function createDataLoader(options={}){
  }
  function completePackage(raw){return raw&&Array.isArray(raw.elements)&&!raw.remark;}
  function allowed(){if(Date.now()<cooldown)throw error('RATE_LIMIT',`Kartendienst-Pause: noch ${Math.ceil((cooldown-Date.now())/1000)} s. Bereits geladene Pakete bleiben gespeichert.`,{retryAt:cooldown});}
- function keyFor(b,layer){return (layer==='pois'?'tree29:':'osm12:')+layer+':'+b.map(x=>x.toFixed(6)).join(',');}
+ function keyFor(b,layer){return 'osm12:'+layer+':'+b.map(x=>x.toFixed(6)).join(',');}
  async function getOSMLayer(b,signal,layer,onProgress,opts={}){
   const key=keyFor(b,layer),phase=layer==='pois'?'pois':'base';check(signal);
   if(!opts.refresh){const saved=await cache.get(key);check(signal);if(completePackage(saved)){send(onProgress,{phase,status:'cached',detail:'Datenpaket aus lokalem Speicher.'});return saved;}}
