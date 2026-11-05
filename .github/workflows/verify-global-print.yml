@@ -1,0 +1,101 @@
+name: Verify global printable baseline
+on:
+  push:
+    branches: [qa/global-print-release]
+permissions: {contents: read}
+jobs:
+  stage:
+    runs-on: ubuntu-latest
+    permissions: {contents: write}
+    outputs: {ref: '${{ steps.c.outputs.sha }}'}
+    steps:
+    - uses: actions/checkout@v4
+      with: {fetch-depth: 8}
+    - id: c
+      run: |
+        set -eu
+        git fetch --quiet --depth 1 origin b95db64dc13838621846a805551eb974ffa8467b
+        cd relief-studio/source
+        python3 tools/global_release_repair.py
+        python3 tools/global_export_credits.py
+        node -e 'const fs=require("fs"),p=require("./package.json");p.scripts.test+=" tests/global_missing.test.mjs";fs.writeFileSync("package.json",JSON.stringify(p,null,2)+"\n")'
+        python3 - <<'PY'
+        from pathlib import Path
+        p=Path('tests/global_exports.mjs');s=p.read_text().replace('r.meshMethod=mesh.vectorGrid', 'mesh.archiveRelease=d.globalSource.release;r.meshMethod=mesh.vectorGrid').replace('const chk=verifySolid',"assert(buf.subarray(0,80).toString().includes('Overture Maps Foundation'));const chk=verifySolid");p.write_text(s)
+        p=Path('tests/global_browser.py');s=p.read_text().replace("assert not errors,errors;row['ok']=True", "assert b'Overture Maps Foundation' in path.open('rb').read(80);p.evaluate(\"ReliefStudio.view('model')\");p.wait_for_timeout(350);p.locator('#model-canvas').screenshot(path=str(out/(place+'.png')));assert not errors,errors;row['ok']=True");p.write_text(s)
+        PY
+        node tools/prepare_release28.mjs
+        cd ../..
+        git rm .github/workflows/verify-global-print.yml relief-studio/source/tools/{global_release_repair.py,global_export_credits.py,install_global_cycle.py,global_refinements.py,build_global_candidate.sh}
+        git add relief-studio
+        git config user.name 'Relief Studio QA'; git config user.email 'github-actions[bot]@users.noreply.github.com'
+        SHA=$(git commit-tree "$(git write-tree)" -p 48612bfe274ae0bd4843f09c30a684e9c4ab625f -m 'Recover degenerate seams, preserve valid source tiles and embed archive provenance')
+        git push origin "$SHA:refs/heads/candidate/global-verified-$GITHUB_RUN_ID"
+        echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+        tar czf /tmp/verified-source.tgz --exclude=relief-studio/source/public/survey29 relief-studio
+    - uses: actions/upload-artifact@v4
+      with: {name: verified-source, path: /tmp/verified-source.tgz,retention-days: 3}
+  scale:
+    needs: stage
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy: {fail-fast: false, max-parallel: 6, matrix: {ct: [AF,AS,EU,NA,SA,OC]}}
+    steps:
+    - uses: actions/checkout@v4
+      with: {ref: '${{ needs.stage.outputs.ref }}', persist-credentials: false}
+    - uses: actions/setup-node@v4
+      with: {node-version: 22}
+    - working-directory: relief-studio/source
+      run: |
+        npm install --prefix /tmp/world-qa --ignore-scripts --no-audit --no-fund pngjs@7.0.0
+        rc=0; for km in 0.5 2 5; do RS_PNG_MODULE=/tmp/world-qa/node_modules/pngjs node --max-old-space-size=5600 tests/global_exports.mjs '${{ matrix.ct }}' /tmp/check/$km $km || rc=1; done;exit $rc
+    - if: always()
+      uses: actions/upload-artifact@v4
+      with: {name: 'matrix-${{ matrix.ct }}',path: '/tmp/check/**/*.json',retention-days: 5}
+  unit:
+    needs: stage
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with: {ref: '${{ needs.stage.outputs.ref }}',persist-credentials: false}
+    - uses: actions/setup-node@v4
+      with: {node-version: 22}
+    - run: cd relief-studio/source && npm test >/tmp/unit.txt || { grep -A9 '^not ok' /tmp/unit.txt |cut -c1-140|head -100;exit 1; }
+    - if: always()
+      uses: actions/upload-artifact@v4
+      with: {name: tests-unit, path: /tmp/unit.txt,retention-days: 5}
+  browser:
+    needs: stage
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    container: {image: 'mcr.microsoft.com/playwright/python:v1.57.0-noble',options: '--ipc=host'}
+    steps:
+    - uses: actions/checkout@v4
+      with: {ref: '${{ needs.stage.outputs.ref }}',persist-credentials: false}
+    - run: |
+        pip -q install playwright==1.57.0
+        python -m http.server 8171 --bind 127.0.0.1 --directory relief-studio/source/public >/tmp/http.log 2>&1 &
+        pid=$!;trap 'kill $pid || true' EXIT
+        python relief-studio/source/tests/global_browser.py /tmp/UI http://127.0.0.1:8171/
+    - if: always()
+      uses: actions/upload-artifact@v4
+      with: {name: tests-UI, path: /tmp/UI,retention-days: 5}
+  acceptance:
+    needs: [stage,scale,unit,browser]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/download-artifact@v4
+      with: {pattern: 'matrix-*',path: results}
+    - uses: actions/download-artifact@v4
+      with: {name: tests-UI,path: UI}
+    - uses: actions/download-artifact@v4
+      with: {name: tests-unit,path: tests}
+    - run: |
+        python3 - <<'PY'
+        import json,glob,re
+        rows=[r for f in glob.glob('results/**/*.json',recursive=True) for r in json.load(open(f))];ui=json.load(open('UI/browser.json'));log=open('tests/unit.txt').read();v={'candidate':'${{ needs.stage.outputs.ref }}','unitPassed':int(re.search(r'^# pass (\d+)',log,re.M)[1]),'unitFailed':int(re.search(r'^# fail (\d+)',log,re.M)[1]),'rows':rows,'ui':ui};open('acceptance.json','w').write(json.dumps(v,ensure_ascii=False,indent=2));print('STL success',sum(r['ok'] for r in rows),'/',len(rows),'UI',[(r['place'],r['ok']) for r in ui]);assert len({(r['place'],r['sizeKm']) for r in rows})==72 and all(r['ok'] for r in rows) and len(ui)==3 and all(r['ok'] for r in ui) and v['unitFailed']==0
+        PY
+    - if: always()
+      uses: actions/upload-artifact@v4
+      with: {name: acceptance,path: 'acceptance.json',retention-days: 10}
