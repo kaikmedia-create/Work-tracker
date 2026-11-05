@@ -1,0 +1,47 @@
+name: City surface build and regression
+on:
+  push:
+    branches: [feature/surveyed-city-surface]
+    paths: [.github/workflows/test-city-survey.yml]
+permissions:
+  contents: write
+jobs:
+  surface:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 16
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - uses: actions/setup-node@v4
+        with: {node-version: 22}
+      - name: Build verified interface and share code for independent browser review
+        working-directory: relief-studio/source
+        run: |
+          node tools/prepare_release28.mjs
+          python tools/build_city29.py
+          node --check public/architecture.js
+          node --check public/app.js
+          node --check public/worker.js
+      - uses: actions/upload-artifact@v4
+        with: {name: city-source, path: relief-studio/, retention-days: 2}
+      - name: Process real public elevation sources
+        working-directory: relief-studio/source
+        run: |
+          pip install -q rasterio pyproj numpy
+          python tools/prepare_city_surface.py public/survey29
+      - uses: actions/upload-artifact@v4
+        with: {name: real-city-tiles, path: relief-studio/source/public/survey29/, retention-days: 2}
+      - name: Stage public geodata and modified application on a candidate (not main)
+        run: |
+          git rm .github/workflows/prepare-survey-candidate.yml .github/workflows/test-city-survey.yml
+          git add relief-studio
+          git config user.name 'Relief Studio CI'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Automatically build surveyed roofs and vegetation; remove manual roof import'
+          git push origin HEAD:refs/heads/candidate/city-surface-${GITHUB_RUN_ID}
+      - name: Full regression suite on candidate
+        working-directory: relief-studio/source
+        run: |
+          npm test > "$RUNNER_TEMP/rs.log" || { grep -A20 '^not ok' "$RUNNER_TEMP/rs.log" | cut -c1-350 | head -180; exit 1; }
+          tail -9 "$RUNNER_TEMP/rs.log"
