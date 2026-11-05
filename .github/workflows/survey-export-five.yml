@@ -1,0 +1,31 @@
+name: City surfaces and STL downloads in Chromium
+on:
+  push:
+    branches: [qa/survey-export-check]
+    paths: [.github/workflows/survey-export-five.yml]
+permissions: {contents: read}
+jobs:
+  browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    container:
+      image: mcr.microsoft.com/playwright/python:v1.57.0-noble
+      options: --ipc=host
+    steps:
+    - uses: actions/checkout@v4
+      with: {persist-credentials: false}
+    - name: PIN startup, absence of old controls, measured coverage, orthophoto, tree fallback and STL bytes
+      run: |
+        set -eu
+        pip -q install playwright==1.57.0
+        python -m http.server 8199 --bind 127.0.0.1 >/tmp/http.log 2>&1 &
+        srv=$!; trap 'kill "$srv" || true' EXIT
+        python relief-studio/source/tests/survey_accept.py evidence http://127.0.0.1:8199/relief-studio/
+    - uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: city-browser-exports
+        path: |
+          evidence/*.png
+          evidence/browser.json
+        retention-days: 4
