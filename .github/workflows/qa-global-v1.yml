@@ -1,48 +1,29 @@
-name: Global baseline acceptance
+name: Global source acceptance
 on:
   push:
     branches: [dev/global-source-baseline]
-    paths: ['.github/workflows/qa-global-v1.yml','relief-studio/source/tests/global_unit_trigger']
+    paths: ['.github/workflows/qa-global-v1.yml','relief-studio/source/tools/build_global_candidate.sh','relief-studio/source/tests/global_unit_trigger']
 permissions: {contents: read}
 jobs:
   assemble:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
     permissions: {contents: write}
     outputs: {candidate: '${{ steps.stage.outputs.sha }}'}
     steps:
     - uses: actions/checkout@v4
-      with: {fetch-depth: 0}
+      with: {fetch-depth: 2}
     - uses: actions/setup-node@v4
       with: {node-version: 22}
-    - name: Assemble native and encrypted browser entries
-      working-directory: relief-studio/source
-      run: |
-        set -eu
-        node tools/prepare_release28.mjs
-        python3 tools/install_global_cycle.py
-        sed -i 's/<details class="model-only" id="global-plan">/<details data-mode-only="model" id="global-plan">/' /dev/null 2>/dev/null || true
-        npm install --prefix /tmp/rs-vendor --ignore-scripts --no-audit --no-fund esbuild@0.25.12 polygon-clipping@0.15.7 splaytree@3.1.2 robust-predicates@3.0.2
-        /tmp/rs-vendor/node_modules/.bin/esbuild /tmp/rs-vendor/node_modules/polygon-clipping/dist/polygon-clipping.esm.js --bundle --minify --format=esm --outfile=public/global-overlay.js
-        for p in polygon-clipping splaytree robust-predicates;do f=$(find /tmp/rs-vendor/node_modules/$p -maxdepth 1 -iname 'license*' | head -1); test -n "$f"; cp "$f" "public/global-$p-LICENSE.txt"; done
-        cp /tmp/rs-vendor/package-lock.json tools/global-vendor-lock.json
-        python3 - <<'PY'
-        import urllib.request,json,concurrent.futures,pathlib
-        release='2026-10-21.0'
-        def collect(k):
-         u=f'https://stac.overturemaps.org/{release}/{k}/collection.json';j=json.load(urllib.request.urlopen(u,timeout=20));assert j['type']=='Collection' and j['license'].lower()=='odbl-1.0',(k,j.get('license'));return k,{'release':release,'license':'ODbL-1.0','use':'geometry','stac':u,'spatialExtent':j['extent']['spatial'],'temporalExtent':j['extent']['temporal'],'acquisition':None}
-        keys=['buildings/building','buildings/building_part','base/water','base/land','base/land_use','transportation/segment'];p=dict(concurrent.futures.ThreadPoolExecutor(3).map(collect,keys));pathlib.Path('public/global-stac.json').write_text(json.dumps(p,indent=2)+'\n')
-        PY
-        node -e 'const fs=require("fs"),p=require("./package.json");p.scripts.test+=" tests/global_cycle.test.mjs";fs.writeFileSync("package.json",JSON.stringify(p,null,2)+"\n")'
-        node tools/prepare_release28.mjs
-    - name: Stage candidate; never update main here
+    - run: bash relief-studio/source/tools/build_global_candidate.sh
+    - name: Stage candidate only. Production ref is never moved by this job.
       id: stage
       run: |
         git rm .github/workflows/qa-global-v1.yml .github/workflows/inspect-global-archives.yml
         git add relief-studio
-        git config user.name 'Relief Studio QA'
-        git config user.email 'github-actions[bot]@users.noreply.github.com'
-        SHA=$(git commit-tree "$(git write-tree)" -p b95db64dc13838621846a805551eb974ffa8467b -m 'Coordinate-based global sources and printable Overture/OSM baseline')
+        git config user.name 'Relief Studio QA'; git config user.email 'github-actions[bot]@users.noreply.github.com'
+        git fetch --quiet --depth 1 origin b95db64dc13838621846a805551eb974ffa8467b
+        SHA=$(git commit-tree "$(git write-tree)" -p b95db64dc13838621846a805551eb974ffa8467b -m 'Coordinate-based sources, bounded global archives and closed STL fallback')
         git push origin "$SHA:refs/heads/candidate/global-base-$GITHUB_RUN_ID"
         echo "sha=$SHA" >> "$GITHUB_OUTPUT"
   suite:
@@ -60,7 +41,7 @@ jobs:
   live:
     needs: assemble
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 18
     strategy:
       fail-fast: false
       matrix: {region: [AF,EU,AS,NA,SA,OC]}
@@ -70,9 +51,25 @@ jobs:
     - uses: actions/setup-node@v4
       with: {node-version: 22}
     - run: npm install --prefix /tmp/world-qa --ignore-scripts --no-audit --no-fund pngjs@7.0.0
-    - name: Fetch actual data and verify re-read STL
+    - name: Fresh global geometry and closed STL, warm cache replay
       working-directory: relief-studio/source
       run: RS_PNG_MODULE=/tmp/world-qa/node_modules/pngjs node --max-old-space-size=4800 tests/global_exports.mjs '${{ matrix.region }}' /tmp/real-exports 0.5
     - if: always()
       uses: actions/upload-artifact@v4
       with: {name: 'world-${{ matrix.region }}', path: /tmp/real-exports/*.json, retention-days: 4}
+  browser:
+    needs: assemble
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    container: {image: 'mcr.microsoft.com/playwright/python:v1.57.0-noble', options: '--ipc=host'}
+    steps:
+    - uses: actions/checkout@v4
+      with: {ref: '${{ needs.assemble.outputs.candidate }}',persist-credentials: false}
+    - run: |
+        pip -q install playwright==1.57.0
+        python -m http.server 8195 --bind 127.0.0.1 --directory relief-studio/source/public >/tmp/http.log 2>&1 &
+        pid=$!; trap 'kill $pid || true' EXIT
+        python relief-studio/source/tests/global_browser.py /tmp/world-browser http://127.0.0.1:8195/
+    - if: always()
+      uses: actions/upload-artifact@v4
+      with: {name: world-browser, path: /tmp/world-browser, retention-days: 4}
