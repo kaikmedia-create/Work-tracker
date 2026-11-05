@@ -12,7 +12,7 @@ with sync_playwright() as pw:
    with p.expect_download(timeout=90000) as dl:p.click('#export-stl')
    path=Path(dl.value.path());row['bytes']=path.stat().st_size
    with path.open('rb') as f:f.seek(80);assert struct.unpack('<I',f.read(4))[0]==q['triangles'] and row['bytes']==84+50*q['triangles'];
-   assert not errors,errors;row['ok']=True
+   assert b'Overture Maps Foundation' in path.open('rb').read(80);p.evaluate("ReliefStudio.view('model')");p.wait_for_timeout(350);p.locator('#model-canvas').screenshot(path=str(out/(place+'.png')));assert not errors,errors;row['ok']=True
   except Exception as e:row['failure']=str(e)[:600];row['errors']=errors;row['detail']=p.locator('#global-result').all_text_contents();
   finally:rows.append(row);(out/'browser.json').write_text(json.dumps(rows,ensure_ascii=False,indent=2));print(place,row['ok'],row.get('failure',''),flush=True);ctx.close()
  browser.close()
