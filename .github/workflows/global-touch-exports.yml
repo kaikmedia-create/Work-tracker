@@ -1,0 +1,30 @@
+name: Mobile global STL exports
+on:
+  push:
+    branches: [qa/global-touch-download]
+permissions: {contents: read}
+jobs:
+  touch:
+    strategy: {fail-fast: false,matrix: {engine: [chromium,webkit]}}
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    container: {image: 'mcr.microsoft.com/playwright/python:v1.57.0-noble', options: '--ipc=host'}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - run: |
+          python -m pip -q install playwright==1.57.0
+          python -m http.server 8120 --bind 127.0.0.1 >/tmp/phone.log 2>&1 & S=$!; trap 'kill "$S" || true' EXIT
+          python - <<'PY'
+          from playwright.sync_api import sync_playwright
+          from pathlib import Path
+          import struct,json
+          with sync_playwright() as pw:
+           eng='${{ matrix.engine }}';br=getattr(pw,eng).launch();ctx=br.new_context(is_mobile=True,has_touch=True,viewport={'width':390,'height':760},accept_downloads=True);p=ctx.new_page();errs=[];p.on('pageerror',lambda e:errs.append(str(e)));ctx.route('**/interpreter*',lambda r:r.abort());p.goto('http://127.0.0.1:8120/relief-studio/');p.fill('#pin','2808');p.tap('#submit');p.wait_for_selector('body[data-phone]');p.tap('#choose-model');
+           for k,v in [('widthKm',.35),('heightKm',.35),('lon',10.76),('lat',34.74)]:p.locator('[data-setting="'+k+'"]').first.evaluate('(e,v)=>{e.value=v;e.dispatchEvent(new Event("change",{bubbles:true}));}',str(v))
+           p.tap('#load-data');p.wait_for_function('ReliefStudio.mesh || document.querySelector("#notice.error:not([hidden])")',timeout=125000);assert p.evaluate('!!ReliefStudio.mesh'),p.locator('#notice').inner_text();a=p.evaluate('ReliefStudio.data.sourceAudit');assert a['release'] and a['statistics']['buildings']>0;assert 'Weinheim' not in p.evaluate('ReliefStudio.settings.title');p.tap('#phone-project');p.tap('#export-top');
+           with p.expect_download(timeout=55000) as e:p.tap('#export-stl')
+           f=Path(e.value.path());n=struct.unpack('<I',f.open('rb').read(84)[80:])[0];assert n>0 and f.stat().st_size==84+50*n and not errs;print('Verified mobile model:',eng,a['statistics']['buildings'],n,f.stat().st_size);Path('touch.json').write_text(json.dumps({'engine':eng,'emulatedTouch':True,'coordinate':[10.76,34.74],'buildings':a['statistics']['buildings'],'triangles':n,'bytes':f.stat().st_size,'uncaught':errs}));br.close()
+          PY
+      - uses: actions/upload-artifact@v4
+        with: {name: 'touch-${{ matrix.engine }}',path: touch.json,retention-days: 4}
