@@ -20,7 +20,7 @@ function boundsInfo(b) {
  return {sw,ne,lon:(b[0]+b[2])/2,lat,w:(ne[0]-sw[0])*Math.cos(lat*DEG),h:(ne[1]-sw[1])*Math.cos(lat*DEG)};
 }
 function validateBounds(b,mode='model') {
- if(!Array.isArray(b)||b.length!==4||!b.every(Number.isFinite)||b[0]>=b[2]||b[1]>=b[3]||b[0]<-180||b[2]>180||b[1]<-80||b[3]>80) throw Error('Ungültiger Kartenausschnitt.');
+ if(!Array.isArray(b)||b.length!==4||!b.every(Number.isFinite)||b[0]>=b[2]||b[1]>=b[3]||(mode==='model'?(b[0]<-182||b[2]>182||Math.abs((b[0]+b[2])/2)>180.0000001):(b[0]<-180||b[2]>180))||b[1]<-80||b[3]>80) throw Error('Ungültiger Kartenausschnitt.');
  const d=boundsInfo(b),poster=mode==='poster',maxSide=poster?24000:12000,maxArea=poster?240e6:80e6;
  if(d.w<99.999999||d.h<99.999999)throw Object.assign(Error(`Ausschnitt zu klein: ${Math.round(d.w)} × ${Math.round(d.h)} m; mindestens 100 m je Seite.`),{code:'AREA_TOO_SMALL',diagnostics:{widthM:d.w,heightM:d.h,minimumM:100}});
  if(d.w>maxSide||d.h>maxSide||d.w*d.h>maxArea)throw Error(poster?'Poster-Ausschnitt: maximal 24 km pro Seite und 240 km² Gesamtfläche. Für sehr große Städte zuerst die Karte verkleinern oder einen spezialisierten Kartendatenanbieter konfigurieren.':'3D-Ausschnitt: maximal 12 km pro Seite und 80 km². Für größere Städte den Poster-Modus nutzen oder einen kleineren Relief-Ausschnitt wählen.');

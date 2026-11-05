@@ -228,7 +228,7 @@ async function terrainData(bounds,signal,onProgress,cache,refresh=false){
  let z=14,a,b;do{a=tileXY(bounds[0],bounds[3],z);b=tileXY(bounds[2],bounds[1],z);if((Math.floor(b[0])-Math.floor(a[0])+1)*(Math.floor(b[1])-Math.floor(a[1])+1)<=48)break;z--;}while(z>9);
  const jobs=[];for(let y=Math.floor(a[1]);y<=Math.floor(b[1]);y++)for(let x=Math.floor(a[0]);x<=Math.floor(b[0]);x++)jobs.push([x,y]);
  const tiles=new Map();let next=0,done=0;send(onProgress,{phase:'terrain',status:'tiles',done:0,total:jobs.length,detail:`${jobs.length} Höhenkacheln zu laden`});
- const work=async()=>{while(next<jobs.length){if(signal?.aborted)throw abortError();const [x,y]=jobs[next++],url=R.server?`api/terrain/${z}/${x}/${y}.png`:`https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${x}/${y}.png`,tileKey=`terrain11:${z}/${x}/${y}`;const tile=`${z}/${x}/${y}`,service=R.server?'Studio-Server':'s3.amazonaws.com';let rgba;
+ const work=async()=>{while(next<jobs.length){if(signal?.aborted)throw abortError();const [x,y]=jobs[next++],X=((x%2**z)+2**z)%2**z,url=R.server?`api/terrain/${z}/${X}/${y}.png`:`https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${X}/${y}.png`,tileKey=`terrain11:${z}/${X}/${y}`;const tile=`${z}/${x}/${y}`,service=R.server?'Studio-Server':'s3.amazonaws.com';let rgba;
   try{
    let blob=refresh?null:await cache?.get(tileKey);check(signal);
    async function pixels(bytes){
@@ -255,5 +255,5 @@ async function terrainData(bounds,signal,onProgress,cache,refresh=false){
  return {cols,rows,values,zoom:z,spacing:Math.max(info.w/(cols-1),info.h/(rows-1)),source:'Mapzen / AWS Terrain Tiles (Terrarium)',attribution:'https://github.com/tilezen/joerd/blob/master/docs/attribution.md',tileCount:jobs.length};
 }
 const loader=createDataLoader();
-Object.assign(R,{europeBounds,request,osmQuery,poiQuery,searchPlace,reverseRegion,tileXY,readJSONLimited,createDataLoader,mergeOSM,splitBounds,loadMap:loader.loadMap,getOSMLayer:loader.getOSMLayer,loaderDiagnostics:loader.diagnostics,server:false});
+Object.assign(R,{globalTerrain:(b,signal,progress,refresh)=>terrainData(b,signal,progress,loader.cache,refresh),europeBounds,request,osmQuery,poiQuery,searchPlace,reverseRegion,tileXY,readJSONLimited,createDataLoader,mergeOSM,splitBounds,loadMap:loader.loadMap,getOSMLayer:loader.getOSMLayer,loaderDiagnostics:loader.diagnostics,server:false});
 })(globalThis.RS);
