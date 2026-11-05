@@ -1,0 +1,79 @@
+name: Global baseline acceptance and evidence
+on:
+  workflow_dispatch:
+  push:
+    branches: [qa/global-topology-and-cache]
+    paths: ['.github/workflows/global-baseline-release.yml']
+permissions: {contents: read}
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions: {contents: write}
+    outputs: {commit: '${{ steps.save.outputs.sha }}'}
+    steps:
+      - uses: actions/checkout@v4
+        with: {path: new}
+      - uses: actions/checkout@v4
+        with: {path: old, ref: b95db64dc13838621846a805551eb974ffa8467b, persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Prepare reproducible source & test
+        working-directory: new/relief-studio/source
+        run: |
+          set -eu
+          (cd "$GITHUB_WORKSPACE/old/relief-studio/source" && node tools/prepare_release28.mjs)
+          python tools/qualify_atlas.py "$GITHUB_WORKSPACE/old/relief-studio/source"
+          npm pkg set 'scripts.test='"$(node -p 'require("./package.json").scripts.test') tests/atlas-contract.test.mjs"
+          mkdir -p "$GITHUB_WORKSPACE/checks"; tar -czf "$GITHUB_WORKSPACE/checks/active.tgz" --exclude=survey29 public
+          npm test >"$GITHUB_WORKSPACE/checks/suite.txt" || { grep -A18 '^not ok' "$GITHUB_WORKSPACE/checks/suite.txt" | cut -c1-200 | head -100; exit 1; }; tail -10 "$GITHUB_WORKSPACE/checks/suite.txt"
+      - id: save
+        working-directory: new
+        run: |
+          git add relief-studio; git config user.name 'Relief Studio CI'; git config user.email 'github-actions[bot]@users.noreply.github.com'; git commit -m 'Deliver coordinate source selection, roof matching and watertight large-area recovery'; git push origin HEAD:refs/heads/candidate/global-release-${GITHUB_RUN_ID}; echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: public-code-and-tests, path: checks/, retention-days: 4}
+  matrix:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy: {fail-fast: false, max-parallel: 6, matrix: {n: [0,1,2,3,4,5]}}
+    container: {image: 'mcr.microsoft.com/playwright/python:v1.57.0-noble', options: '--ipc=host'}
+    steps:
+      - uses: actions/checkout@v4
+        with: {ref: '${{ needs.build.outputs.commit }}', persist-credentials: false}
+      - run: |
+          python -m pip -q install playwright==1.57.0 numpy scipy
+          python -m http.server 8120 --bind 127.0.0.1 >/tmp/atlas.log 2>&1 & S=$!; trap 'kill "$S" || true' EXIT
+          python relief-studio/source/tests/atlas-browser.py http://127.0.0.1:8120/relief-studio/ evidence ${{ matrix.n }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: 'proof-${{ matrix.n }}', path: 'evidence/matrix-*.json', retention-days: 5}
+      - uses: actions/upload-artifact@v4
+        if: ${{ always() && (matrix.n == 0 || matrix.n == 2 || matrix.n == 5) }}
+        with:
+          name: examples-${{ matrix.n }}
+          path: |
+            evidence/*.png
+            evidence/*.stl
+          if-no-files-found: ignore
+          retention-days: 3
+  report:
+    needs: [build,matrix]
+    if: ${{ always() && needs.build.result == 'success' }}
+    runs-on: ubuntu-latest
+    permissions: {contents: write,actions: read}
+    steps:
+      - uses: actions/checkout@v4
+        with: {ref: '${{ needs.build.outputs.commit }}'}
+      - uses: actions/download-artifact@v4
+        with: {pattern: 'proof-*', path: results, merge-multiple: true}
+      - run: |
+          python - <<'PY'
+          from pathlib import Path
+          import json,os
+          r=[x for p in sorted(Path('results').glob('matrix-*.json')) for x in json.loads(p.read_text())];result={'commit':'${{ needs.build.outputs.commit }}','run':os.environ['GITHUB_RUN_ID'],'tested':len(r),'passed':sum(x.get('ok') is True and not x['errors'] for x in r),'cases':r};p=Path('relief-studio/reports/global');p.mkdir(exist_ok=True,parents=True);(p/'matrix.json').write_text(json.dumps(result,ensure_ascii=False,indent=2)+'\n');print(result['tested'],result['passed']);
+          PY
+          git config user.name 'Relief Studio CI'; git config user.email 'github-actions[bot]@users.noreply.github.com'; git add relief-studio/reports/global/matrix.json; git commit -m 'Publish per-location provenance and independent binary-geometry verification results';git push origin HEAD:refs/heads/evidence/global-release-${GITHUB_RUN_ID}
+      - uses: actions/upload-artifact@v4
+        with: {name: global-result, path: relief-studio/reports/global/matrix.json, retention-days: 7}
