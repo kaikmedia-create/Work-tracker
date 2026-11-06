@@ -13,7 +13,6 @@ chains.get('public/app.js').push(phone.changes['public/app.js']);
 const city=JSON.parse(await readFile(resolve(site,'upgrade28-survey.json'),'utf8'));for(const [name,c] of Object.entries({...city.changes,...city.sourceChanges})){chains.get(name).push(c);}
 const atlas=JSON.parse(await readFile(resolve(site,'upgrade28-atlas.json'),'utf8'));if(atlas.version!=='28-global-atlas-1')throw Error('Unknown atlas patch');for(const [name,c] of Object.entries({...atlas.changes,...atlas.sourceChanges})){if(!chains.has(name))throw Error('Unknown atlas target');chains.get(name).push(c);}
 const hybrid=JSON.parse(await readFile(resolve(site,'upgrade28-hybrid.json'),'utf8'));if(hybrid.version!=='28-hybrid-1')throw Error('Unknown hybrid patch');for(const [name,c] of Object.entries(hybrid.changes)){if(!chains.has(name))throw Error('Unknown hybrid target');chains.get(name).push(c);}
-const review=JSON.parse(await readFile(resolve(site,'upgrade28-height-review.json'),'utf8'));if(review.version!=='28-height-review-1')throw Error('Unknown height review patch');for(const [name,c] of Object.entries(review.changes)){if(!chains.has(name))throw Error('Unknown height review target');chains.get(name).push(c);}
 for(const [name,chain] of chains){
  if(!/^(?:public\/(?:data|app|diagnostics|architecture|core|worker|viewer)\.js|public\/index\.html|server\.mjs|tests\/v(?:12|13|14|15|16|17|18|19|20|21|22|23|24|25|26|27)_gate\.test\.mjs)$/.test(name))throw Error('Unsafe release path: '+name);
  const path=resolve(root,name);if(!path.startsWith(root+sep))throw Error('Unsafe target.');
