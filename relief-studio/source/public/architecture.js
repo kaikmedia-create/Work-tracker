@@ -68,7 +68,7 @@ function metres(v){
 function roofSpec(b,scale){
  const t=b.tags||{},shape=String(t['roof:shape']||t['building:roof:shape']||'flat').toLowerCase();
  const shapes=['onion','spherical','half-hipped','saltbox','flat','gabled','hipped','pyramidal','skillion','dome','cone','round','gambrel','mansard'];
- let total=metres(t.height),source=b.heightSource==='Manuell'?'Manuell':'OSM-Höhe',roof=metres(t['roof:height']);
+ let total=metres(t.height),source=b.heightSource==='Manuell'?'Manuell':b.measuredHeight?'Messhöhe im Grundriss':'OSM-Höhe',roof=metres(t['roof:height']);
  if(!(total>0)){total=Number(b.height);source=b.heightSource||'Schätzwert';}
  if(!(total>0))total=9;
  if(!(roof>=0)){
@@ -274,7 +274,7 @@ function architecturePatches(data,s,terrainAt,w,h,scale){
   for(const p of parts)out.push({...p,box:bbox(p.poly),kind:isLand?2:1,building:i});
   stats.buildings++;stats.parts+=tag['building:part']&&tag['building:part']!=='no'?1:0;
   stats.walls+=tag['rs:wall']==='yes'?1:0;
-  if(!reference&&!item&&spec.source!=='OSM-Höhe'&&!b.worldSource?.fields?.includes('height'))stats.heightEstimated++;
+  if(!reference&&!item&&!b.measuredHeight&&spec.source!=='OSM-Höhe'&&!b.worldSource?.fields?.includes('height'))stats.heightEstimated++;
   if(spec.shape!=='flat'&&!inferred)stats.roofTagged++;
   if(!inferred&&spec.estimatedRoof&&spec.shape!=='flat')stats.roofEstimated++;
   if(spec.unsupported)stats.unsupportedRoofs++;
