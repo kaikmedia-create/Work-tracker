@@ -24,17 +24,17 @@ with sync_playwright() as pw:
  for name,lon,lat,covered in [('Heidelberg',8.7104,49.4118,True),('Sfax',10.76,34.74,False)]:
   ctx=browser.new_context(viewport={'width':390,'height':820} if mobile else {'width':1440,'height':1050},is_mobile=mobile,has_touch=mobile,accept_downloads=True,service_workers='block');p=ctx.new_page();errors=[];p.on('pageerror',lambda e:errors.append(str(e)));ctx.route('**/interpreter*',lambda r:r.abort());ctx.route('**/tile.openstreetmap.org/**',lambda r:r.abort());row={'place':name,'engine':engine,'emulatedTouch':mobile};results.append(row)
   try:
-   p.goto(URL);p.fill('#pin','2808');p.click('#submit');p.wait_for_selector('#choose-model');p.evaluate('const Base=RS.ModelViewer;RS.ModelViewer=class extends Base{constructor(...a){super(...a);window.qaViewer=this;}}');p.click('#choose-model');p.wait_for_selector('#height-review',state='attached');assert not p.locator('#height-review').is_visible()
+   p.goto(URL);p.fill('#pin','2808');p.click('#submit');p.wait_for_selector('#choose-model');p.evaluate('() => {const Base=RS.ModelViewer;RS.ModelViewer=class extends Base{constructor(...a){super(...a);window.qaViewer=this;}};}');p.click('#choose-model');p.wait_for_selector('#height-review',state='attached');assert not p.locator('#height-review').is_visible()
    for k,v in [('widthKm',.35),('heightKm',.35),('lon',lon),('lat',lat)]:setv(p,k,v)
    p.evaluate('window.oldMesh=null');p.click('#load-data');ready(p,'classic');assert not p.locator('#height-review').is_visible();row['classicSHA']=export(p)
-   p.evaluate('window.oldMesh=ReliefStudio.mesh');setv(p,'surfaceMode','hybrid');ready(p,'hybrid');row['hybridSHA']=export(p);p.evaluate("ReliefStudio.view('model')");
+   p.evaluate('() => {window.oldMesh=ReliefStudio.mesh;}');setv(p,'surfaceMode','hybrid');ready(p,'hybrid');row['hybridSHA']=export(p);p.evaluate("ReliefStudio.view('model')");
    if mobile:p.click('#phone-preview')
    assert p.locator('#height-review').is_visible();row['title']=p.locator('#height-review-title').inner_text();row['text']=p.locator('#height-review-text').inner_text()
    if covered:
     assert row['classicSHA']!=row['hybridSHA'];assert p.evaluate('ReliefStudio.data.heightFusionAudit.comparison.changed>0');row['statistics']=p.evaluate('ReliefStudio.data.heightFusionAudit.comparison');p.click('#height-review-show');p.wait_for_timeout(1800);row['example']=p.locator('#height-review-building').inner_text();row['heights']=p.locator('#height-review-values').inner_text();assert '→' in row['heights'];a=cam(p);assert a['zoom']>1;p.screenshot(path=str(OUT/(name+'-after.png')))
-    p.evaluate('window.oldMesh=ReliefStudio.mesh');p.click('#height-review-before');ready(p,'classic');samecam(a,cam(p));assert row['classicSHA']==export(p);p.evaluate("ReliefStudio.view('model')")
+    p.evaluate('() => {window.oldMesh=ReliefStudio.mesh;}');p.click('#height-review-before');ready(p,'classic');samecam(a,cam(p));assert row['classicSHA']==export(p);p.evaluate("ReliefStudio.view('model')")
     if mobile:p.click('#phone-preview')
-    p.wait_for_timeout(1800);p.screenshot(path=str(OUT/(name+'-before.png')));p.evaluate('window.oldMesh=ReliefStudio.mesh');p.click('#height-review-after');ready(p,'hybrid');samecam(a,cam(p));assert row['hybridSHA']==export(p);row['roundTripIdentical']=True;row['sameCamera']=True
+    p.wait_for_timeout(1800);p.screenshot(path=str(OUT/(name+'-before.png')));p.evaluate('() => {window.oldMesh=ReliefStudio.mesh;}');p.click('#height-review-after');ready(p,'hybrid');samecam(a,cam(p));assert row['hybridSHA']==export(p);row['roundTripIdentical']=True;row['sameCamera']=True
    else:
     assert row['classicSHA']==row['hybridSHA'];assert 'Keine Änderung' in row['title'];assert not p.locator('#height-review-show').is_visible();p.screenshot(path=str(OUT/(name+'-no-data.png')))
     with p.expect_download() as ev:p.click('#height-review-diagnose')
