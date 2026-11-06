@@ -5,7 +5,7 @@
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 const quantile=(a,q)=>{const t=(a.length-1)*q,i=Math.floor(t);return a[i]+(a[Math.min(i+1,a.length-1)]-a[i])*(t-i);};
 const sorted=a=>a.slice().sort((x,y)=>x-y);
-function segmentDistance(x,y,a,b){const dx=b[0]-a[0],dy=b[1]-a[1],d=dx*dx+dy*dy,t=d?clamp(((x-a[0])*dx+(y-a[1])*dy)/d,0,1):0;return Math.hypot(x-a[0]-a[0]*0-t*dx,y-a[1]-t*dy);}
+function segmentDistance(x,y,a,b){const dx=b[0]-a[0],dy=b[1]-a[1],d=dx*dx+dy*dy,t=d?clamp(((x-a[0])*dx+(y-a[1])*dy)/d,0,1):0;return Math.hypot(x-a[0]-t*dx,y-a[1]-t*dy);}
 function edgeDistance(x,y,rings){let d=Infinity;for(const r of rings)for(let i=0;i<r.length;i++)d=Math.min(d,segmentDistance(x,y,r[i],r[(i+1)%r.length]));return d;}
 function sourceError(message){return Object.assign(Error(message),{code:'MEASUREMENT_REFERENCE'});}
 function validateSampler(s){
