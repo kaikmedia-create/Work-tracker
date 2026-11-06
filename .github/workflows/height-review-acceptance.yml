@@ -1,0 +1,53 @@
+name: Verify visible height comparison
+on:
+  push:
+    branches: [feature/height-review-visibility]
+permissions: {contents: read}
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: 22}
+      - name: Generate checksum-verified display changes and run regression
+        working-directory: relief-studio/source
+        run: |
+          node tools/prepare_release28.mjs
+          python3 tools/install_height_review.py
+          npm test > /tmp/height-review-tests.log
+          tail -10 /tmp/height-review-tests.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: height-review-unit-tests,path: /tmp/height-review-tests.log,retention-days: 7}
+  browser:
+    needs: source
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {engine: chromium,device: desktop}
+          - {engine: chromium,device: mobile}
+          - {engine: webkit,device: mobile}
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    container: {image: 'mcr.microsoft.com/playwright/python:v1.57.0-noble',options: '--ipc=host'}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: 22}
+      - name: Compare real heights, unchanged exports, camera and no-data feedback
+        run: |
+          cd relief-studio/source
+          node tools/prepare_release28.mjs
+          python tools/install_height_review.py
+          cd ../..
+          python -m pip -q install playwright==1.57.0
+          python -m http.server 8120 --bind 127.0.0.1 >/tmp/http.log 2>&1 & S=$!; trap 'kill "$S" || true' EXIT
+          python relief-studio/source/tests/height-review-browser.py http://127.0.0.1:8120/relief-studio/ /tmp/review-proof ${{ matrix.engine }} ${{ matrix.device }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: 'height-review-${{ matrix.engine }}-${{ matrix.device }}',path: /tmp/review-proof,retention-days: 7}
