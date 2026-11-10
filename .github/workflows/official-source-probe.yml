@@ -1,0 +1,49 @@
+name: Official solid source probe
+on:
+  push:
+    branches: [feature/official-solids-v1]
+    paths: ['.github/workflows/official-source-probe.yml']
+permissions: {contents: read}
+jobs:
+  sources:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Fetch pinned geometry dependency and bounded official QA samples
+        run: |
+          mkdir -p evidence/vendor
+          npm pack manifold-3d@3.5.4 --pack-destination evidence/vendor
+          python3 - <<'PY'
+          import json,urllib.request,pathlib,traceback
+          out=pathlib.Path('evidence'); report=[]
+          def get(url,limit):
+            req=urllib.request.Request(url,headers={'User-Agent':'ReliefStudio-Official-Source-Acceptance/1','Accept':'application/json,application/xml,*/*'})
+            with urllib.request.urlopen(req,timeout=45) as r:
+              b=r.read(limit+1)
+              if len(b)>limit:raise ValueError('Source exceeds QA byte budget')
+              return b
+          probes=[('kadaster','https://api.pdok.nl/kadaster/3d-basisvoorziening/ogc/v1/collections/basisbestand_gebouwen/items?bbox=4.36,52.00,4.37,52.01&f=json&limit=20'),('plateau','https://api.plateauview.mlit.go.jp/datacatalog/citygml/r:139.7375,35.65833333333333,139.74,35.66?types=bldg')]
+          for name,url in probes:
+            row={'provider':name,'catalog':url};report.append(row)
+            try:
+              b=get(url,2000000);(out/(name+'-catalog.json')).write_bytes(b);j=json.loads(b)
+              if name=='kadaster':
+                files=[{'url':f['properties']['download_link'],'year':f['properties'].get('jaargang_luchtfoto',0)} for f in j.get('features',[]) if f.get('properties',{}).get('download_link')]
+                files.sort(key=lambda f:f['year'],reverse=True)
+              else:
+                rows=j if isinstance(j,list) else j.get('data',[j])
+                files=[f for r in rows for f in r.get('files',{}).get('bldg',[]) if f.get('maxLod',0)>=2 and f.get('fileSize',0)<16000000]
+              row['available']=len(files); row['downloaded']=[]
+              for f in files[:1]:
+                b=get(f['url'],16000000);namefile=name+('-source.zip' if b[:2]==b'PK' else '-source.gml');(out/namefile).write_bytes(b);row['downloaded'].append({'url':f['url'],'bytes':len(b),'file':namefile})
+              row['ok']=bool(row['downloaded'])
+            except Exception as e:row.update(ok=False,error=str(e));traceback.print_exc()
+          (out/'probe.json').write_text(json.dumps(report,ensure_ascii=False,indent=2));print(json.dumps(report,ensure_ascii=False,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: official-source-probe,path: evidence,retention-days: 7}
