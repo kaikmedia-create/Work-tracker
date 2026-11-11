@@ -1,0 +1,26 @@
+/** Real Chromium UI, module worker and download paths. Synthetic geometry is explicitly labelled QA. */
+import test from 'node:test';import assert from 'node:assert/strict';import {mkdtemp,readFile,stat} from 'node:fs/promises';import {tmpdir} from 'node:os';import {join,resolve,extname} from 'node:path';import {fileURLToPath,pathToFileURL} from 'node:url';import {execFile} from 'node:child_process';import {promisify} from 'node:util';import {createServer} from 'node:http';
+import '../public/core.js';import {solidFromSurfaces,fromUTM} from '../public/official-geometry.mjs';
+const run=promisify(execFile),root=fileURLToPath(new URL('../../',import.meta.url));
+test('Chromium: PIN bootstrap, default policy, exact preview/STL/3MF and project roundtrip',{skip:!process.env.CI&&!process.env.RELIEF_BROWSER,timeout:180000},async()=>{
+ const temp=await mkdtemp(join(tmpdir(),'rs-browser-'));await run('npm',['install','--prefix',temp,'--ignore-scripts','--no-audit','--no-fund','playwright@1.57.0'],{timeout:60000});
+ const {chromium}=await import(pathToFileURL(join(temp,'node_modules/playwright/index.mjs')));
+ const browser=await chromium.launch({channel:'chrome',args:['--no-sandbox','--disable-gpu']});
+ const server=createServer(async(req,res)=>{try{let path=resolve(root,'.'+decodeURIComponent(new URL(req.url,'http://local').pathname));if(!path.startsWith(root))throw Error('path');if((await stat(path)).isDirectory())path=join(path,'index.html');const body=await readFile(path);res.writeHead(200,{'Content-Type':({'.html':'text/html','.js':'text/javascript','.mjs':'text/javascript','.json':'application/json','.css':'text/css','.svg':'image/svg+xml','.wasm':'application/wasm'}[extname(path)]||'application/octet-stream')});res.end(body);}catch{res.writeHead(404);res.end('missing');}});await new Promise(r=>server.listen(0,'127.0.0.1',r));
+ const url='http://127.0.0.1:'+server.address().port+'/';
+ try{
+  const R=globalThis.RS,P=[[476900,5488400,100],[476930,5488400,100],[476930,5488430,100],[476900,5488430,100],[476900,5488400,115],[476930,5488400,120],[476930,5488430,120],[476900,5488430,115]],f=[[0,3,2,1],[0,1,5,4],[1,2,6,5],[2,3,7,6],[3,0,4,7],[4,5,6,7]],types=['GroundSurface','WallSurface','WallSurface','WallSurface','WallSurface','RoofSurface'];
+  const m=solidFromSurfaces('synthetic-ui',f.map((a,i)=>({kind:types[i],rings:[a.map(j=>P[j])]})),{url:'https://example.test/qa',license:'test fixture',attribution:'Synthetic QA, not surveyed architecture',crs:'EPSG:25832'}),[lon,lat]=fromUTM(476915,5488415),data={bounds:R.boundsFor(lon,lat,.1,.1),buildings:[],roads:[],water:[],parks:[],trees:[],landmarks:[],terrain:{cols:2,rows:2,values:[100,100,100,100]},officialInput:{schema:'rs-official-pack-1',models:[m],rejected:[]}},settings=R.cleanSettings({mode:'model',modelWidth:100,resolution:65,frame:1,roadRelief:0,autoSubtitle:false}),project=Buffer.from(JSON.stringify({version:3,settings,data}));
+  for(const viewport of [{width:1440,height:1000},{width:390,height:844}]){
+   const ctx=await browser.newContext({viewport,acceptDownloads:true,serviceWorkers:'block'}),page=await ctx.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
+   await ctx.route('**/*',route=>route.request().url().startsWith(url)||route.request().url().startsWith('https://cdn.jsdelivr.net/npm/manifold-3d@3.5.4/')?route.continue():route.abort());
+   await page.goto(url);await page.waitForFunction(()=>!document.querySelector('#submit').disabled);await page.fill('#pin','2808');await page.click('#submit');await page.waitForSelector('#choose-model');assert.equal(await page.evaluate(()=>ReliefStudio.settings.surfaceMode),'official');
+   await page.locator('#project-file').setInputFiles({name:'qa.relief.json',mimeType:'application/json',buffer:project});
+   await page.waitForFunction(()=>ReliefStudio.mesh||(!ReliefStudio.building&&document.querySelector('#notice.error:not([hidden])')),null,{timeout:90000});
+   const report=await page.evaluate(()=>({ready:!!ReliefStudio.mesh,notice:document.querySelector('#notice').textContent,direct:ReliefStudio.mesh?.officialAudit?.direct,triangles:ReliefStudio.mesh?.indices.length/3,preview:!!ReliefStudio.mesh?.preview,kind:ReliefStudio.mesh?.kind,mode:ReliefStudio.settings.surfaceMode}));assert(report.ready,JSON.stringify(report));assert.equal(report.direct,1);assert.equal(report.preview,false);assert.equal(report.kind,'architecture');
+   await page.click('#export-top');let promise=page.waitForEvent('download',{timeout:45000});await page.click('#export-stl');let file=await promise,raw=await readFile(await file.path());assert.equal(raw.readUInt32LE(80),report.triangles);assert.equal(raw.length,84+50*report.triangles);
+   promise=page.waitForEvent('download',{timeout:45000});await page.click('#export-3mf');file=await promise;raw=await readFile(await file.path());assert(raw.includes(Buffer.from('Metadata/sources.json')));assert(raw.includes(Buffer.from('surfaces-first-v1')));
+   assert.deepEqual(errors,[]);console.log('OFFICIAL_BROWSER',JSON.stringify({...report,viewport,exports:['STL exact triangle count','3MF source metadata'],errors}));await ctx.close();
+  }
+ }finally{await browser.close();await new Promise(r=>server.close(r));}
+});

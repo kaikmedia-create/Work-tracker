@@ -1,4 +1,4 @@
-/** Verify/materialise release 17 -> 25; never overwrite unknown source edits. */
+/** Verify/materialise release 17 -> 28; never overwrite unknown source edits. */
 import {readFile,writeFile,rename,unlink} from 'node:fs/promises';
 import {resolve,dirname,sep} from 'node:path';import {fileURLToPath} from 'node:url';import {createHash} from 'node:crypto';
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..'),site=resolve(root,'..'),sha=s=>createHash('sha256').update(s).digest('hex'),chains=new Map(),planned=[];
@@ -13,8 +13,9 @@ chains.get('public/app.js').push(phone.changes['public/app.js']);
 const city=JSON.parse(await readFile(resolve(site,'upgrade28-survey.json'),'utf8'));for(const [name,c] of Object.entries({...city.changes,...city.sourceChanges})){chains.get(name).push(c);}
 const atlas=JSON.parse(await readFile(resolve(site,'upgrade28-atlas.json'),'utf8'));if(atlas.version!=='28-global-atlas-1')throw Error('Unknown atlas patch');for(const [name,c] of Object.entries({...atlas.changes,...atlas.sourceChanges})){if(!chains.has(name))throw Error('Unknown atlas target');chains.get(name).push(c);}
 const hybrid=JSON.parse(await readFile(resolve(site,'upgrade28-hybrid.json'),'utf8'));if(hybrid.version!=='28-hybrid-1')throw Error('Unknown hybrid patch');for(const [name,c] of Object.entries(hybrid.changes)){if(!chains.has(name))throw Error('Unknown hybrid target');chains.get(name).push(c);}
+const official=JSON.parse(await readFile(resolve(site,'upgrade28-official.json'),'utf8'));if(official.version!=='28-official-1')throw Error('Unknown official patch');for(const [name,c] of Object.entries({...official.changes,...official.sourceChanges})){if(!chains.has(name))chains.set(name,[]);chains.get(name).push(c);}
 for(const [name,chain] of chains){
- if(!/^(?:public\/(?:data|app|diagnostics|architecture|core|worker|viewer)\.js|public\/index\.html|server\.mjs|tests\/v(?:12|13|14|15|16|17|18|19|20|21|22|23|24|25|26|27)_gate\.test\.mjs)$/.test(name))throw Error('Unsafe release path: '+name);
+ if(!/^(?:public\/(?:data|app|diagnostics|architecture|core|worker|viewer)\.js|public\/index\.html|server\.mjs|tests\/(?:hybrid-buildings|no-height-review|v28_gate)\.test\.mjs|tests\/v(?:12|13|14|15|16|17|18|19|20|21|22|23|24|25|26|27)_gate\.test\.mjs)$/.test(name))throw Error('Unsafe release path: '+name);
  const path=resolve(root,name);if(!path.startsWith(root+sep))throw Error('Unsafe target.');
  const original=await readFile(path,'utf8');let value=original;
  for(let i=0;i<chain.length;i++){

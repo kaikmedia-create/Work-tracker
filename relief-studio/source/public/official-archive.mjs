@@ -25,7 +25,7 @@ export async function readGMLZip(bytes){
   if(flags&1||![0,8].includes(method)||size>80000000||(total+=size)>160000000||offset+30>bytes.length||u32(offset)!==0x04034b50)throw sourceError('Nicht unterstütztes oder zu großes ZIP-Mitglied.');
   const start=offset+30+u16(offset+26)+u16(offset+28);if(start+compressed>u32(end+16))throw sourceError('Ungültige ZIP-Datengrenzen.');
   const raw=bytes.subarray(start,start+compressed),data=method===8?await inflate(raw,'deflate-raw',size):raw;
-  if(data.length!==size||crc(data)!==checksum)throw sourceError('CityGML-Datei beschädigt (Prüfsumme).');files.push({name,text:new TextDecoder('utf-8',{fatal:true}).decode(data)});
+  if(data.length!==size||crc(data)!==checksum)throw sourceError('CityGML-Datei beschädigt (Prüfsumme).');const text=new TextDecoder('utf-8',{fatal:true}).decode(data);if(!/<(?:[\w.-]+:)?cityObjectMember\b/.test(text)&&/<(?:[\w.-]+:)?CityModel\b/.test(text))continue;files.push({name,text});
  }
  if(!files.length)throw sourceError('ZIP enthält keine CityGML-Datei.');return files;
 }
