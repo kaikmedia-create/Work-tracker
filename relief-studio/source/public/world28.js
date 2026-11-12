@@ -1,4 +1,4 @@
-import {fetchRoofs} from './world-surfaces28.js';
+import {fetchRoofs} from './world-surfaces28.js?official=1';
 // Supplement, never replace the project's footprints. No names or project files leave the device.
 import {PMTiles,VectorTile,Pbf} from './world-tiles.js';
 const host='https://overturemaps-extras-us-west-2.s3.us-west-2.amazonaws.com';
