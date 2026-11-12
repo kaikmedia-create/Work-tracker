@@ -15,13 +15,14 @@ test('both startup paths omit the removed comparison delta',async()=>{
   const code=await readFile(file,'utf8');
   assert.doesNotMatch(code,/upgrade28-height-review\.json/);
   assert.match(code,/upgrade28-hybrid\.json/);
+  assert.match(code,/upgrade28-official\.json/);
  }
 });
-test('classic default, hybrid mode and error diagnostics remain available',async()=>{
+test('official-surface priority is the default while classic mode and diagnostics remain available',async()=>{
  const R=globalThis.RS,html=await readFile(join(root,'public/index.html'),'utf8');
- assert.equal(R.cleanSettings({}).surfaceMode,'classic');
- assert.equal(R.cleanSettings({surfaceSchema:2,surfaceMode:'hybrid'}).surfaceMode,'hybrid');
- assert.match(html,/Klassische Kanten \+ Messhöhen/);
+ assert.equal(R.cleanSettings({}).surfaceMode,'hybrid');
+ assert.equal(R.cleanSettings({surfaceSchema:3,surfaceMode:'classic'}).surfaceMode,'classic');
+ assert.match(html,/Amtliche Flächen → Messpunkte/);
  assert.match(html,/notice-diagnose/);
  assert.doesNotMatch(html,/Unterschied ansehen|Nächstes Gebäude|height-review/);
 });
