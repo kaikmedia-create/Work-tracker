@@ -180,6 +180,14 @@ function referencePatches(b,r,bounds,w,h,scale,foot,border,override){
   poly=splitBy(poly,border).inside;if(poly.length)out.push({poly,plane:planeFrom3(...q)});
  }return out.length?out:null;
 }
+function referenceWalls(b,r,bounds,w,h,scale,foot,override,model){
+ const fail=()=>{throw Object.assign(Error('Ungültige oder falsch zugeordnete amtliche Wandflächen: '+String(b.name||b.id)),{code:'LANDMARK_MODEL',diagnostics:{objectId:b.id}});};
+ if(!r||!Array.isArray(r.s)||!r.s.length||r.s.length>4000||!model?.v?.length)fail();let top=0;for(const p of model.v)top=Math.max(top,p[2]);if(!top)fail();
+ const f=Number.isFinite(override.height)?override.height*100/top:1,out=[];for(const q of r.s){if(!Array.isArray(q)||q.length!==8||!q.every(Number.isSafeInteger)||Math.abs(q[0])>1800000000||Math.abs(q[2])>1800000000||Math.abs(q[1])>800000000||Math.abs(q[3])>800000000||q[5]<=q[4]||q[7]<=q[6])fail();
+  const p=R.normalized(bounds,[[q[0]/1e7,q[1]/1e7],[q[2]/1e7,q[3]/1e7]]),a=[(p[0][0]-.5)*w,(.5-p[0][1])*h],z=[(p[1][0]-.5)*w,(.5-p[1][1])*h];if(Math.hypot(a[0]-z[0],a[1]-z[1])<1e-7)continue;
+  out.push({a,b:z,lowA:foot+Math.max(0,q[4])*.01*scale*f,highA:foot+Math.max(0,q[5])*.01*scale*f,lowB:foot+Math.max(0,q[6])*.01*scale*f,highB:foot+Math.max(0,q[7])*.01*scale*f});
+ }return out;
+}
 function importRoofSurfaces(data,fc){
  const error=msg=>{throw Object.assign(Error(msg),{code:'LANDMARK_IMPORT'});};
  if(!data||fc?.type!=='FeatureCollection'||fc.height_reference!=='ground'||typeof fc.source!=='string'||!fc.source.trim()||!Array.isArray(fc.features)||!fc.features.length||fc.features.length>20000)error('Erwartet: GeoJSON FeatureCollection mit source, height_reference: ground und höchstens 20.000 Dachdreiecken.');
@@ -201,7 +209,7 @@ function checkRoofPack(p){
 }
 function roofLookup(data){
  const records=[],info=R.boundsInfo(data.bounds);for(const pack of [data.roofPack,bundledRoofs]){if(!pack)continue;for(const r of pack.entries){const b=r.bbox,v=data.bounds;if(b[2]<v[0]||b[3]<v[1]||b[0]>v[2]||b[1]>v[3])continue;const [a,c,anchor]=R.normalized(v,[[b[0],b[3]],[b[2],b[1]],r.anchor]);records.push({r,source:pack.source,box:[...a,...c],anchor});}}
- return b=>{if(!records.length||b.detailRoof||b.tags?.['building:roof:shape']||b.tags?.['rs:wall']||b.tags?.['building:part']||b.partIds?.length||b.tags?.['roof:shape'])return null;const a=R.ringBox(b.rings[0]),area=(a[2]-a[0])*(a[3]-a[1]);let winner=null,best=.74;
+ return b=>{if(!records.length||b.detailRoof||b.surveyRoof||b.tags?.['building:roof:shape']||b.tags?.['rs:wall']||b.tags?.['building:part']||b.partIds?.length||b.tags?.['roof:shape'])return null;const a=R.ringBox(b.rings[0]),area=(a[2]-a[0])*(a[3]-a[1]);let winner=null,best=.74;
  for(const item of records){const c=item.box,i=Math.max(0,Math.min(a[2],c[2])-Math.max(a[0],c[0]))*Math.max(0,Math.min(a[3],c[3])-Math.max(a[1],c[1])),u=area+(c[2]-c[0])*(c[3]-c[1])-i,score=i/u;if(score>best&&R.inside(...item.anchor,b.rings)&&Math.hypot((a[0]+a[2]-c[0]-c[2])*info.w/2,(a[1]+a[3]-c[1]-c[3])*info.h/2)<3.5){winner=item;best=score;}}
  return winner;};
 }
@@ -220,7 +228,7 @@ function measuredRoof(polys,item,foot,scale,w,h,manual){
 // courtyards, arbitrary building=yes, mapped flat roofs, parts or synthetic training data.
 function neighbourhoodRoofs(data){
  const dim=R.boundsInfo(data.bounds),cells=new Map(),types=new Set(['house','detached','semidetached_house','terrace','residential','apartments']);
- function descriptor(b){const t=b.tags||{},generic=t.building==='yes'&&t['addr:housenumber']&&t['addr:street']&&!t.shop&&!t.office&&!t.leisure&&!t.sport&&!t.barrier,k=generic?'house':t.building;if(!types.has(k)||b.landmark||b.name||t.historic||t.amenity||t.tourism||t.heritage||t.man_made||t['building:part']||b.partIds?.length||b.detailRoof||b.rings?.length!==1)return null;
+ function descriptor(b){const t=b.tags||{},generic=t.building==='yes'&&t['addr:housenumber']&&t['addr:street']&&!t.shop&&!t.office&&!t.leisure&&!t.sport&&!t.barrier,k=generic?'house':t.building;if(!types.has(k)||b.landmark||b.name||t.historic||t.amenity||t.tourism||t.heritage||t.man_made||t['building:part']||b.partIds?.length||b.detailRoof||b.surveyRoof||b.rings?.length!==1)return null;
   const ring=b.rings[0],bb=R.ringBox(ring),area=Math.abs(ring.reduce((sum,p,i)=>{const q=ring[(i+1)%ring.length];return sum+p[0]*q[1]-p[1]*q[0];},0))/2*dim.w*dim.h;if(area<24||area>1200||generic&&(area<45||area>240||ring.length>13))return null;
   return {group:['house','detached','semidetached_house'].includes(k)?'house':k,x:(bb[0]+bb[2])*dim.w/2,y:(bb[1]+bb[3])*dim.h/2,area};}
  const key=(g,x,y)=>g+':'+x+':'+y;
@@ -231,7 +239,7 @@ function neighbourhoodRoofs(data){
   if(ids.size<4)return null;for(const [shape,n] of votes)if(['gabled','hipped'].includes(shape)&&n/ids.size>=.8)return shape;return null;};
 }
 function architecturePatches(data,s,terrainAt,w,h,scale){
- const out=[],stats={referenceModels:0,referenceFaces:0,plainFootprints:0,buildings:0,roofTagged:0,roofEstimated:0,heightEstimated:0,unsupportedRoofs:0,walls:0,minHeightFilled:0,omitted:0,parts:0};
+ const out=[],officialWalls=[],stats={referenceModels:0,referenceFaces:0,officialWallProfiles:0,officialWallMatches:0,officialWallGroundWelds:0,surveyDerivedRoofs:0,plainFootprints:0,buildings:0,roofTagged:0,roofEstimated:0,heightEstimated:0,unsupportedRoofs:0,walls:0,minHeightFilled:0,omitted:0,parts:0};
  const border=[[-w/2,-h/2],[w/2,-h/2],[w/2,h/2],[-w/2,h/2]];
  // Optional OSM tree points: no random parks, no invented street positions.
  const lookupRoof=roofLookup(data),localShape=s.architectureMode==='context'?neighbourhoodRoofs(data):()=>null;stats.contextRoofs=0;stats.underground=0;stats.measuredRoofs=0;stats.roofSources=[];
@@ -268,13 +276,14 @@ function architecturePatches(data,s,terrainAt,w,h,scale){
    if(Number.isFinite(spec.roof)&&spec.roof>0){const eaves=Math.max(spec.minHeight,Number(b.height)||0,1);spec.total=R.clamp(eaves+spec.roof,.2,1000);stats.estimatedTotals=(stats.estimatedTotals||0)+1;}
   }
   const model=referenceFor(b),reference=model?referencePatches(b,model,data.bounds,w,h,scale,foot,border,override):null;
-  const item=!reference&&lookupRoof(b);const inferred=!reference&&!item&&spec.shape==='flat'&&!spec.unsupported&&localShape(b);if(inferred){spec.shape=inferred;spec.roof=NaN;spec.estimatedRoof=true;stats.contextRoofs++;}const parts=reference||(item?measuredRoof(polys,item,foot,scale,w,h,Number.isFinite(override.height)?override.height:metres(tag.height)):roofPieces(polys,frame,spec,foot,scale));
-  if(reference){stats.referenceModels++;stats.referenceFaces+=reference.length;}else if(item){stats.measuredRoofs++;if(!stats.roofSources.includes(item.source))stats.roofSources.push(item.source);}else if(!inferred&&!tag['roof:shape']&&!tag['building:roof:shape']&&!b.partIds?.length&&!tag['rs:wall'])stats.plainFootprints++;
+  if(reference&&b.detailWalls){const walls=referenceWalls(b,b.detailWalls,data.bounds,w,h,scale,foot,override,model);officialWalls.push(...walls);stats.officialWallProfiles+=walls.length;}
+  const survey=!reference&&b.surveyRoof,item=!reference&&!survey&&lookupRoof(b);const inferred=!reference&&!survey&&!item&&spec.shape==='flat'&&!spec.unsupported&&localShape(b);if(inferred){spec.shape=inferred;spec.roof=NaN;spec.estimatedRoof=true;stats.contextRoofs++;}const parts=reference||(survey?measuredRoof(polys,survey,foot,scale,w,h,Number.isFinite(override.height)?override.height:NaN):item?measuredRoof(polys,item,foot,scale,w,h,Number.isFinite(override.height)?override.height:metres(tag.height)):roofPieces(polys,frame,spec,foot,scale));
+  if(reference){stats.referenceModels++;stats.referenceFaces+=reference.length;}else if(survey){stats.surveyDerivedRoofs++;if(!stats.roofSources.includes(survey.source))stats.roofSources.push(survey.source);}else if(item){stats.measuredRoofs++;if(!stats.roofSources.includes(item.source))stats.roofSources.push(item.source);}else if(!inferred&&!tag['roof:shape']&&!tag['building:roof:shape']&&!b.partIds?.length&&!tag['rs:wall'])stats.plainFootprints++;
   const isLand=override.enabled===undefined?!!b.landmark:!!override.enabled;
   for(const p of parts)out.push({...p,box:bbox(p.poly),kind:isLand?2:1,building:i});
   stats.buildings++;stats.parts+=tag['building:part']&&tag['building:part']!=='no'?1:0;
   stats.walls+=tag['rs:wall']==='yes'?1:0;
-  if(!reference&&!item&&!b.measuredHeight&&spec.source!=='OSM-Höhe'&&!b.worldSource?.fields?.includes('height'))stats.heightEstimated++;
+  if(!reference&&!survey&&!item&&!b.measuredHeight&&spec.source!=='OSM-Höhe'&&!b.worldSource?.fields?.includes('height'))stats.heightEstimated++;
   if(spec.shape!=='flat'&&!inferred)stats.roofTagged++;
   if(!inferred&&spec.estimatedRoof&&spec.shape!=='flat')stats.roofEstimated++;
   if(spec.unsupported)stats.unsupportedRoofs++;
@@ -286,7 +295,7 @@ function architecturePatches(data,s,terrainAt,w,h,scale){
  const at=(i,f,z)=>[X+Math.cos(i*Math.PI/4)*rad*f,Y+Math.sin(i*Math.PI/4)*rad*f,z];const face=(a,b,c)=>{const poly=[a,b,c].map(p=>p.slice(0,2));out.push({poly,box:bbox(poly),plane:planeFrom3(a,b,c),kind:5,building:-2});};
  for(let i=0;i<8;i++){const A=at(i,1,h0),B=at(i+1,1,h0),C=at(i+1,.55,h1),D=at(i,.55,h1);face(A,B,C);face(A,C,D);face(D,C,[X,Y,h2]);}stats.treeCrowns++;}}
 
- return {patches:out,stats};
+ return {patches:out,stats,officialWalls};
 }
 // Return nonoverlapping convex top faces after laying one roof patch over them.
 function overlay(faces,patch){
@@ -344,7 +353,7 @@ function seamError(contacts){
 }
 // Conforming edge subdivision prevents T-junctions at roof ridges, building
 // intersections, courtyards and terrain cells. The XY graph is shared by all roofs.
-function stitchSurface(faces,W,H,stats){
+function stitchSurface(faces,W,H,stats,officialWalls=[]){
  const groups=new Map(),segments=[];
  const lineKey=(a,b)=>{
   let dx=b[0]-a[0],dy=b[1]-a[1],len=Math.hypot(dx,dy);if(len<EPS)return null;
@@ -492,8 +501,13 @@ function stitchSurface(faces,W,H,stats){
  if(contacts.length)throw seamError(contacts);
  // All heights meeting at each XY junction must also split vertical wall edges.
  for(let i=0;i<xyZ.length;i++){xyZ[i].sort((a,b)=>a-b);xyZ[i]=xyZ[i].filter((z,j,a)=>!j||z-a[j-1]>1e-7);}
+ function officialWall(e,za,zb){
+  if(!officialWalls.length)return null;const A=xy[e.a],B=xy[e.b];let winner=null,best=.04;
+  for(const q of officialWalls){const dx=q.b[0]-q.a[0],dy=q.b[1]-q.a[1],l2=dx*dx+dy*dy;if(l2<1e-12)continue;const at=p=>{const t=((p[0]-q.a[0])*dx+(p[1]-q.a[1])*dy)/l2,d=Math.abs(dx*(p[1]-q.a[1])-dy*(p[0]-q.a[0]))/Math.sqrt(l2);return [t,d];},x=at(A),y=at(B);if(x[0]<-.002||x[0]>1.002||y[0]<-.002||y[0]>1.002||x[1]>.004||y[1]>.004)continue;const highA=q.highA+(q.highB-q.highA)*x[0],highB=q.highA+(q.highB-q.highA)*y[0],err=Math.abs(za-highA)+Math.abs(zb-highB);if(err<best){best=err;winner={highA,highB,lowA:q.lowA+(q.lowB-q.lowA)*x[0],lowB:q.lowA+(q.lowB-q.lowA)*y[0]};}}
+  return winner;
+ }
  function wall(e,pA,pB,kind){
-  const za=evalZ(pA,xy[e.a]),zb=evalZ(pA,xy[e.b]),wa=evalZ(pB,xy[e.a]),wb=evalZ(pB,xy[e.b]);
+  let za=evalZ(pA,xy[e.a]),zb=evalZ(pA,xy[e.b]),wa=evalZ(pB,xy[e.a]),wb=evalZ(pB,xy[e.b]);const exact=officialWall(e,za,zb);if(exact){za=exact.highA;zb=exact.highB;const a=Math.abs(wa-exact.lowA)<=.08,b=Math.abs(wb-exact.lowB)<=.08;if(a)wa=exact.lowA;if(b)wb=exact.lowB;stats.officialWallMatches++;if(!a||!b)stats.officialWallGroundWelds++;}
   if(Math.abs(za-wa)+Math.abs(zb-wb)<1e-7)return;
   let ids=[v3(e.a,za,kind),v3(e.b,zb,kind)];
   const byB=xyZ[e.b].filter(z=>z<zb-1e-7&&z>wb+1e-7).reverse();for(const z of byB)ids.push(v3(e.b,z,kind));ids.push(v3(e.b,wb,kind),v3(e.a,wa,kind));
@@ -598,7 +612,7 @@ function buildArchitecture(data,settings,repairs=[],attempt=0){
  const terrain=raster({...data,buildings:[]},{...s,resolution:n,buildingFactor:0,landmarkFactor:1,landmarkWidth:1});
  let low=Infinity;for(const z of data.terrain.values)low=Math.min(low,z);
  const terrainAt=(u,v)=>s.base+Math.max(0,R.sampleTerrain(data.terrain,u,v)-low)*scale*s.terrainFactor;
- tick('Dachflächen',0,data.buildings.length);const {patches,stats}=architecturePatches(data,s,terrainAt,w,h,scale);
+ tick('Dachflächen',0,data.buildings.length);const {patches,stats,officialWalls}=architecturePatches(data,s,terrainAt,w,h,scale);
  // Bound repair work by scene size, not a fixed 100-contact cutoff which rejects
  // valid city blocks. Every repair is still subject to the final manifold check.
  const repairLimit=Math.min(2048,Math.max(128,stats.buildings*2));stats.repairLimit=repairLimit;
@@ -631,7 +645,7 @@ function buildArchitecture(data,settings,repairs=[],attempt=0){
   if(faces.length>800000)throw Error('Modell überschreitet das sichere Detailbudget. Bitte kleineren Ausschnitt wählen.');
  }
  let result;
- tick('Kanten verbinden',0,faces.length);try{result=stitchSurface(faces,W,H,stats);}
+ tick('Kanten verbinden',0,faces.length);try{result=stitchSurface(faces,W,H,stats,officialWalls);}
  catch(e){
   if(!e.contacts)throw e;
   if(attempt>=4||repairs.length+e.contacts.length>repairLimit){
@@ -838,5 +852,5 @@ function buildWithStreets(data,input){const s=R.cleanSettings(input),info=R.boun
  return addStreetRelief(mesh,data.roads,s,w,h,w/info.w);
 }
 
-Object.assign(R,{checkRoofPack,buildRasterMesh:raster,buildMesh:buildWithStreets,architecture:{architecturePatches,neighbourhoodRoofs,roofLookup,measuredRoof,referenceFor,referencePatches,importRoofSurfaces,conformVerticalChains,smoothTerrainGrid,roadCurve,roadAnchors,decompose,roofSpec,roofFrame,roofPieces,half,overlay,stitchSurface,buildArchitecture}});
+Object.assign(R,{checkRoofPack,buildRasterMesh:raster,buildMesh:buildWithStreets,architecture:{architecturePatches,neighbourhoodRoofs,roofLookup,measuredRoof,referenceFor,referencePatches,referenceWalls,importRoofSurfaces,conformVerticalChains,smoothTerrainGrid,roadCurve,roadAnchors,decompose,roofSpec,roofFrame,roofPieces,half,overlay,stitchSurface,buildArchitecture}});
 })(globalThis.RS);
