@@ -1,4 +1,4 @@
-import {rd,parseBag} from './world-surfaces28.js';
+import {rd,parseBag} from './world-surfaces28.js?official=1';
 // Numerical inverse of the same Dutch national-grid transformation used by the mesh parser.
 export function toRD(lon,lat){let x=155000,y=463000;for(let i=0;i<6;i++){const p=rd(x,y),a=rd(x+1,y),b=rd(x,y+1),A=a[0]-p[0],B=b[0]-p[0],C=a[1]-p[1],D=b[1]-p[1],det=A*D-B*C,dx=lon-p[0],dy=lat-p[1];x+=(D*dx-B*dy)/det;y+=(A*dy-C*dx)/det;}return [x,y];}
 const ar=r=>Math.abs(r.reduce((s,p,i)=>{const q=r[(i+1)%r.length];return s+p[0]*q[1]-p[1]*q[0];},0)/2);
