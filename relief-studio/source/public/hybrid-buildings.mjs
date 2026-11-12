@@ -27,14 +27,19 @@ function protectedReason(R,b,s){
  if(Number.isFinite(override?.height)||b.heightSource==='Manuell')return 'manual';
  if(b.detailRoof||R.architecture?.referenceFor?.(b))return 'detailed-roof';
  if(t['rs:wall']==='yes'||t.barrier||t.location==='underground'||Number(t['building:levels'])<0)return 'not-building';
- const explicit=R.architecture?.roofSpec?.(b,1);if(t.height!==undefined&&explicit?.source==='OSM-Höhe'&&Number.isFinite(parseFloat(t.height))&&parseFloat(t.height)>0)return 'explicit-height';
  return null;
+}
+function derivedRoofGrid(grid,nx,ny,mid,threshold,source,bb,id){
+ const values=new Array(nx*ny).fill(NaN),queue=[];for(const [key,z] of grid){if(!Number.isFinite(z)||Math.abs(z-mid)>threshold)continue;const [i,j]=key.split(',').map(Number),at=j*nx+i;if(i<0||j<0||i>=nx||j>=ny||Number.isFinite(values[at]))continue;values[at]=z;queue.push(at);}
+ if(queue.length<12)return null;for(let at=0;at<queue.length;at++){const k=queue[at],i=k%nx,j=Math.floor(k/nx);for(const q of [k-1,k+1,k-nx,k+nx]){const x=q%nx,y=Math.floor(q/nx);if(q<0||q>=values.length||Math.abs(x-i)+Math.abs(y-j)!==1||Number.isFinite(values[q]))continue;values[q]=values[k];queue.push(q);}}
+ if(values.some(v=>!Number.isFinite(v)))return null;const max=Math.max(...values),unit=Math.max(.05,Math.ceil(max/250/.05)*.05);if(!Number.isFinite(unit)||unit>5)return null;const bytes=Uint8Array.from(values,v=>clamp(Math.round(v/unit),1,250));
+ return {r:{id:'survey:'+String(id).slice(0,96),cols:nx,rows:ny,unit,samples:btoa(String.fromCharCode(...bytes))},box:bb.slice(),source:String(source||'Amtliche Messpunkte'),derived:true};
 }
 /** Returns a new buildings array; original project data and settings are untouched. */
 export function fuseBuildingMeasurements(R,data,settings,sampler){
  validateSampler(sampler);
  const dim=R.boundsInfo(data.bounds),byId=new Map(data.buildings.map(b=>[b.id,b]));
- const audit={algorithm:'footprint-height-p70-v1',source:String(sampler.source||'Messquelle'),resolutionMetres:sampler.resolutionMetres,heightReference:sampler.heightReference,unit:'m',total:data.buildings.length,updated:0,protected:0,rejected:0,sampled:0,validSamples:0,reasons:{},buildings:[],footprintsUnchanged:true,terrainUnchanged:true};
+ const audit={algorithm:'official-points-roof-grid-v2',source:String(sampler.source||'Messquelle'),resolutionMetres:sampler.resolutionMetres,heightReference:sampler.heightReference,unit:'m',total:data.buildings.length,updated:0,derivedSurfaces:0,protected:0,rejected:0,sampled:0,validSamples:0,reasons:{},buildings:[],footprintsUnchanged:true,terrainUnchanged:true};
  const buildings=data.buildings.map(b=>{
   const row={id:b.id,status:'unchanged',originalHeight:b.height},skip=reason=>{row.reason=reason;audit.reasons[reason]=(audit.reasons[reason]||0)+1;audit.buildings.push(row);return b;};
   const protect=protectedReason(R,b,settings);if(protect){audit.protected++;return skip(protect);}
@@ -63,15 +68,16 @@ export function fuseBuildingMeasurements(R,data,settings,sampler){
   }
   row.roughnessMetres=rough.length?quantile(sorted(rough),.5):null;
   if(good.length/points.length<.7||p90-p10>Math.max(8,p70*.8)||row.roughnessMetres>Math.max(1.2,p70*.05)){audit.rejected++;return skip('inconsistent-surface');}
-  // P70 gives a stable roof level, not a maximum spike or an average with a
-  // guessed 9 m building. Tagged non-flat roofs use a robust near-ridge level.
-  const t=b.tags||{},shape=t['roof:shape']||t['building:roof:shape'],nonflat=shape&&shape!=='flat';
-  const H=Math.round((nonflat?quantile(good,.95):p70)*10)/10;
-  const roofMin=parseFloat(t['roof:height'])||0,minH=parseFloat(t.min_height)||0;
-  if(H<Math.max(1.5,roofMin+.5,minH+.5)||H>1000){audit.rejected++;return skip('incompatible-roof-height');}
-  row.status='applied';row.reason='supported-interior-height';row.heightMetres=H;row.quantile=nonflat?.95:.70;row.spreadMetres=Math.round((p90-p10)*100)/100;
-  audit.updated++;audit.buildings.push(row);
-  return {...b,height:H,heightSource:'Messhöhe · robust im Grundriss',tags:{...t,height:String(H),'rs:height-source':'footprint-survey'},measuredHeight:{...row,source:audit.source,resolutionMetres:res}};
+  // Once direct official surfaces are absent, retain the measured roof landscape
+  // itself instead of collapsing it to one scalar height. Sparse/noisy fields
+  // were already rejected above; missing edge cells are extended from the
+  // nearest supported interior sample only for clipping at the mapped footprint.
+  const t=b.tags||{},H=Math.round(quantile(good,.95)*10)/10,minH=parseFloat(t.min_height)||0;
+  if(H<Math.max(1.5,minH+.5)||H>1000){audit.rejected++;return skip('incompatible-roof-height');}
+  const surveyRoof=derivedRoofGrid(grid,nx,ny,mid,threshold,audit.source,bb,b.id);if(!surveyRoof){audit.rejected++;return skip('insufficient-form-samples');}
+  row.status='applied';row.reason='official-measurements-derived-surface';row.heightMetres=H;row.quantile=.95;row.spreadMetres=Math.round((p90-p10)*100)/100;row.roofGrid=[nx,ny];
+  audit.updated++;audit.derivedSurfaces++;audit.buildings.push(row);
+  return {...b,height:H,heightSource:'Amtliche Messpunkte · Dachform abgeleitet',surveyRoof,measuredHeight:{...row,source:audit.source,resolutionMetres:res}};
  });
  return {data:{...data,buildings},audit};
 }
