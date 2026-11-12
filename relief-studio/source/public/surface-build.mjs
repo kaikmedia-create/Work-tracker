@@ -1,6 +1,6 @@
 /** Shared by desktop, mobile module worker, legacy worker and main-thread fallback. */
-import * as survey from './survey29.js';
-import {fuseBuildingMeasurements,samplerFromSurvey} from './hybrid-buildings.mjs';
+import * as survey from './survey29.js?official=1';
+import {fuseBuildingMeasurements,samplerFromSurvey} from './hybrid-buildings.mjs?official=1';
 export async function buildSurface(R,data,settings,{loadSurvey=survey.loadSurvey,signal=AbortSignal.timeout(22000)}={}){
  const mode=settings.surfaceMode||'classic';let reason='Klassisches Kartenrelief · kartierte Kanten, ohne Messraster.',source=data,fusion=null;
  if(mode==='auto'||mode==='hybrid'){
