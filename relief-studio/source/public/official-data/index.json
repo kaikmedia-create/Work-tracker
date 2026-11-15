@@ -1,1 +1,30 @@
-{"schema":1,"tiles":[{"file":"windeck.json.gz","bounds":[8.6764,49.5454,8.6787,49.5471],"name":"Burg Windeck","models":2},{"file":"wachenburg.json.gz","bounds":[8.684,49.5485,8.687,49.5507],"name":"Wachenburg","models":15}],"note":"Nur die bezeichneten Ausschnitte, nicht ganz Weinheim. Originale LGL-BW-LoD2-Dach-, Wand- und Bodenflächen, am 2026-11-11 abgerufen, trianguliert und auf geschlossene Körper geprüft. Datenquelle: LGL, www.lgl-bw.de, dl-de/by-2-0. LoD2 ist bereits generalisiert; keine vollständigen Fassaden-/Ruinenvermessungen."}
+{
+  "schema": 1,
+  "tiles": [
+    {
+      "file": "windeck.json.gz",
+      "bounds": [
+        8.6764,
+        49.5454,
+        8.6787,
+        49.5471
+      ],
+      "name": "Burg Windeck",
+      "models": 6,
+      "rejected": 0
+    },
+    {
+      "file": "wachenburg.json.gz",
+      "bounds": [
+        8.684,
+        49.5485,
+        8.687,
+        49.5507
+      ],
+      "name": "Wachenburg",
+      "models": 11,
+      "rejected": 2
+    }
+  ],
+  "note": "Nur die bezeichneten Ausschnitte, keine flächendeckende Weinheim-Abdeckung. LGL-BW LoD2, am 2026-11-15 aus den amtlichen Archivkacheln 32/475/5488 und 32/477/5488 erneut erzeugt; SHA-256 der Archive in den Baukörperquellen. Vollständige Dach-, Wand- und Bodenflächen, auf geschlossene Körper geprüft. 2 offene Wachenburg-Baukörper konservativ ausgeschlossen, nicht künstlich repariert. Quelle LGL Baden-Württemberg, www.lgl-bw.de, dl-de/by-2-0. LoD2 ist generalisiert; keine vollständige Ruinen-/Fassadenvermessung."
+}
