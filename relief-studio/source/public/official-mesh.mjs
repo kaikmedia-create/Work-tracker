@@ -91,6 +91,18 @@ function recoverPrintConnectivity(lib,result,w,h){
   const metrics=parts.map((p,index)=>{const m=p.getMesh(),v=m.vertProperties,step=m.numProp;let xmin=Infinity,xmax=-Infinity,ymin=Infinity,ymax=-Infinity,zmin=Infinity;for(let k=0;k<v.length;k+=step){xmin=Math.min(xmin,v[k]);xmax=Math.max(xmax,v[k]);ymin=Math.min(ymin,v[k+1]);ymax=Math.max(ymax,v[k+1]);zmin=Math.min(zmin,v[k+2]);}return {index,area:(xmax-xmin)*(ymax-ymin),xspan:xmax-xmin,yspan:ymax-ymin,zmin,volume:p.volume()};});
   const plate=metrics.filter(m=>m.xspan>=w*.9&&m.yspan>=h*.9&&m.zmin<.05).sort((a,b)=>b.area-a.area)[0];
   const baseIndex=plate?.index??metrics.slice().sort((a,b)=>b.volume-a.volume)[0].index;
+  // Boolean intersections can leave near-zero-volume isolated slivers. They
+  // cannot be printed even with extra posts. Remove only confirmed subresolution
+  // components from the final physical mesh, never from the official source pack.
+  const tiny=metrics.filter(m=>m.index!==baseIndex&&m.volume>=0&&m.volume<.01&&(m.xspan<1||m.yspan<.2));
+  if(tiny.length){
+   const missing=new Set(tiny.map(m=>m.index)),retained=parts.filter((_p,i)=>!missing.has(i));
+   const trimmed=lib.Manifold.compose(retained);
+   if(trimmed.status()!=='NoError'){trimmed.delete();throw sourceError('Unterauflösende Körper konnten nicht sicher entfernt werden.','OFFICIAL_DISCONNECTED');}
+   const check=trimmed.decompose(),count=check.length;for(const p of check)p.delete();
+   if(count===1)return {result:trimmed,audit:tiny.map(m=>({kind:'omitted-subresolution-fragment',component:m.index,sourceGeometryChanged:false,volumeMm3:m.volume,xySpanMm:[m.xspan,m.yspan],reason:'Getrennter Restkörper unter 0.01 mm³; nicht druckbar. Nur Druckmesh verändert.'}))};
+   trimmed.delete();
+  }
   for(let i=0;i<parts.length;i++){
    if(i===baseIndex)continue;
    const m=parts[i].getMesh(),stride=m.numProp,tris=m.triVerts,props=m.vertProperties;
@@ -153,7 +165,7 @@ export async function buildOfficial(R,data,settings,{signal=AbortSignal.timeout(
  R.meshProgress?.({step:'Gelände und ausdrücklich schematische Datenlücken',pass:1});
  let base;try{base=R.buildMesh(prepared.data,s);}catch(e){if(!data.sourceAudit)throw e;base=contactEnvelope(R,prepared.data,s,e);}
  const mesh=selected.models.length?await unionOfficial(R,data,s,base,selected.models,await kernelLoader(),{signal}):base;
- mesh.officialAudit={...selected.audit,schematic:prepared.schematic,replacedMappedFootprints:prepared.replaced,roofPreservation:prepared.roofAudit,buildingEvidence:buildBuildingEvidence(selected.models,prepared.data.buildings,s),printSupports:mesh.printSupportAudit||[],strictScale:true,warning:'Amtliche LoD2-Flächen können bereits generalisiert sein. Fehlende Fassadendetails werden nicht erfunden.'};
+ mesh.officialAudit={...selected.audit,schematic:prepared.schematic,replacedMappedFootprints:prepared.replaced,roofPreservation:prepared.roofAudit,buildingEvidence:buildBuildingEvidence(selected.models,prepared.data.buildings,s),printAdjustments:mesh.printSupportAudit||[],printSupports:(mesh.printSupportAudit||[]).filter(x=>x.kind==='print-support'),strictScale:true,warning:'Amtliche LoD2-Flächen können bereits generalisiert sein. Fehlende Fassadendetails werden nicht erfunden.'};
  mesh.officialCache=selected.cache;
  mesh.surveyReason=`Flächen zuerst: ${selected.audit.direct} direkte Modelle · ${selected.audit.derived} aus klassifizierten Messpunkten · ${prepared.schematic} schematische Kartenkörper. `+(selected.audit.reports.filter(r=>r.reason).map(r=>r.reason).join(' ')||'Dach- und Wandflächen unverändert übernommen; Ausschnitt und Druckfundament gesondert angepasst.');
  return mesh;
