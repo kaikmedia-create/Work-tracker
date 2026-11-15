@@ -3,7 +3,7 @@ import '../public/core.js';import '../public/architecture.js';
 import {solidFromSurfaces,validateSolid,fromUTM,toUTM,parseCityGML,parseCityJSON} from '../public/official-geometry.mjs';
 import {derivePointBuilding} from '../public/official-points.mjs';import {selectOfficial,importOfficial,LGL} from '../public/official-sources.mjs';
 import {buildSurface} from '../public/surface-build.mjs';
-import {schematicBase} from '../public/official-mesh.mjs';
+import {schematicBase,relocateVerifiedWasmURL} from '../public/official-mesh.mjs';
 import {buildBuildingEvidence} from '../public/official-evidence.mjs';import {readGMLZip} from '../public/official-archive.mjs';import {model3mf} from '../public/official-export.mjs';
 const R=globalThis.RS,source={...LGL,provider:'SYNTHETIC QA',attribution:'Synthetic geometry, not an official building'};
 const P=[[476900,5488400,100],[476930,5488400,100],[476930,5488430,100],[476900,5488430,100],[476900,5488400,115],[476930,5488400,120],[476930,5488430,120],[476900,5488430,115]];
@@ -99,4 +99,12 @@ test('built-in LoD2 archives are valid gzip, indexed correctly and have accepted
   assert.equal(bundle.rejected.length,tile.rejected||0);
   for(const m of bundle.models)validateSolid(m);
  }
+});
+test('verified Manifold module rewrites only the expected relative WASM URL',()=>{
+ const original="const wasmBinaryFile = new URL('manifold.wasm', import.meta.url).href;";
+ const fixed=relocateVerifiedWasmURL(new TextEncoder().encode(original));
+ assert.match(fixed,/https:\/\/cdn\.jsdelivr\.net\/npm\/manifold-3d@3\.5\.4\/manifold\.js/);
+ assert(!fixed.includes('import.meta.url'));
+ assert.throws(()=>relocateVerifiedWasmURL(new TextEncoder().encode('const other=true;')),{code:'KERNEL_INTEGRITY'});
+ assert.throws(()=>relocateVerifiedWasmURL(new TextEncoder().encode(original+original)),{code:'KERNEL_INTEGRITY'});
 });
