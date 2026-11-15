@@ -114,7 +114,7 @@ function recoverPrintConnectivity(lib,result,w,h){
   const joined=lib.Manifold.union([result,...posts]);
   if(joined.status()!=='NoError'){joined.delete();throw sourceError('Zusätzliche Druckstützen konnten nicht verbunden werden.','OFFICIAL_DISCONNECTED');}
   const after=joined.decompose(),count=after.length;for(const p of after)p.delete();
-  if(count!==1){joined.delete();throw sourceError('Modell bleibt trotz '+audit.length+' zusätzlicher Druckstützen in '+count+' Komponenten getrennt.','OFFICIAL_DISCONNECTED');}
+  if(count!==1){joined.delete();const snapshot={initial:parts.length,final:count,baseIndex,parts:metrics.map(m=>({index:m.index,span:[+m.xspan.toFixed(2),+m.yspan.toFixed(2)],minZ:+m.zmin.toFixed(2),volume:+m.volume.toFixed(2)})),supports:audit.map(a=>({component:a.component,xy:a.xyMm.map(n=>+n.toFixed(2)),height:+a.heightMm.toFixed(2),width:+a.widthMm.toFixed(2)}))};throw sourceError('Druckkörper nicht verbunden · '+JSON.stringify(snapshot),'OFFICIAL_DISCONNECTED');}
   return {result:joined,audit};
  }finally{for(const p of parts)p.delete();for(const p of posts)p.delete();}
 }
