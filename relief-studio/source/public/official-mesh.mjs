@@ -12,8 +12,26 @@ let kernel;
 const vendor='https://cdn.jsdelivr.net/npm/manifold-3d@3.5.4/';
 const hashes={js:'ca3c8a88df63bb3083013d1eb7f700bf23216594f6e98a2566e34f55d7341ce8',wasm:'73e3b419ad31294f6b1cc478173944e50efc4a34bfdeeff0107bdfc12975f11c'};
 async function verified(name,hash,signal){const b=await readLimited(await fetch(vendor+name,{signal,credentials:'omit'}),1100000),sum=[...new Uint8Array(await crypto.subtle.digest('SHA-256',b))].map(x=>x.toString(16).padStart(2,'0')).join('');if(sum!==hash)throw sourceError('Geometriebibliothek hat eine unerwartete Prüfsumme.','KERNEL_INTEGRITY');return b;}
+/** Emscripten resolves its WASM URL at module initialization even when
+ * the verified WASM bytes are supplied. A blob: import has no relative base.
+ * Only rewrite this one known URL expression after verifying the CDN SHA-256.
+ */
+export function relocateVerifiedWasmURL(bytes){
+ const code=new TextDecoder('utf-8',{fatal:true}).decode(bytes);
+ const pattern=/(new URL\\(\\s*['"]manifold\\.wasm['"]\\s*,\\s*)import\\.meta\\.url(\\s*\\))/g;
+ const matches=[...code.matchAll(pattern)];
+ if(matches.length!==1)throw sourceError('Unerwartetes geprüftes Manifold-Modulformat; keine unkontrollierte Änderung.','KERNEL_INTEGRITY');
+ return code.replace(pattern,(_match,a,b)=>a+JSON.stringify(vendor+'manifold.js')+b);
+}
 export async function loadKernel(){
- return kernel??=(async()=>{const signal=AbortSignal.timeout(25000),[js,wasmBinary]=await Promise.all([verified('manifold.js',hashes.js,signal),verified('manifold.wasm',hashes.wasm,signal)]),url=URL.createObjectURL(new Blob([js],{type:'text/javascript'}));try{const {default:Module}=await import(url),lib=await Module({wasmBinary});lib.setup();return lib;}finally{URL.revokeObjectURL(url);}})().catch(e=>{kernel=null;throw sourceError('Amtliche Körper konnten nicht verbunden werden: '+e.message,'KERNEL_UNAVAILABLE');});
+ return kernel??=(async()=>{
+  const signal=AbortSignal.timeout(25000);
+  const [js,wasmBinary]=await Promise.all([verified('manifold.js',hashes.js,signal),verified('manifold.wasm',hashes.wasm,signal)]);
+  const relocated=relocateVerifiedWasmURL(js);
+  const url=URL.createObjectURL(new Blob([relocated],{type:'text/javascript'}));
+  try{const {default:Module}=await import(url),lib=await Module({wasmBinary});lib.setup();return lib;}
+  finally{URL.revokeObjectURL(url);}
+ })().catch(e=>{kernel=null;throw sourceError('Amtliche Körper konnten nicht verbunden werden: '+e.message,e.code||'KERNEL_UNAVAILABLE');});
 }
 function makeBody(lib,vertices,indices,classes){const props=new Float32Array(vertices.length/3*4);for(let i=0;i<vertices.length/3;i++){props.set(vertices.slice(i*3,i*3+3),i*4);props[i*4+3]=classes?.[i]??1;}const input=new lib.Mesh({numProp:4,vertProperties:props,triVerts:Uint32Array.from(indices)});input.merge();const body=new lib.Manifold(input);if(body.status()!=='NoError'){const reason=body.status();body.delete();throw sourceError('Nicht druckbarer Quellkörper: '+reason,'OFFICIAL_TOPOLOGY');}return body;}
 function normalizedFootprints(R,data,models){return models.flatMap(m=>m.footprints.map(rings=>{const r=rings.map(r=>R.normalized(data.bounds,r));return {rings:r,box:R.ringBox(r[0])};}));}
