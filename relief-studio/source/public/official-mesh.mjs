@@ -88,7 +88,9 @@ function recoverPrintConnectivity(lib,result,w,h){
  try{
   if(parts.length===1)return {result,audit};
   if(parts.length>64)throw sourceError('Zu viele getrennte amtliche Druckkörper.','OFFICIAL_DISCONNECTED');
-  const baseIndex=parts.map(p=>p.volume()).indexOf(Math.max(...parts.map(p=>p.volume())));
+  const metrics=parts.map((p,index)=>{const m=p.getMesh(),v=m.vertProperties,step=m.numProp;let xmin=Infinity,xmax=-Infinity,ymin=Infinity,ymax=-Infinity,zmin=Infinity;for(let k=0;k<v.length;k+=step){xmin=Math.min(xmin,v[k]);xmax=Math.max(xmax,v[k]);ymin=Math.min(ymin,v[k+1]);ymax=Math.max(ymax,v[k+1]);zmin=Math.min(zmin,v[k+2]);}return {index,area:(xmax-xmin)*(ymax-ymin),xspan:xmax-xmin,yspan:ymax-ymin,zmin,volume:p.volume()};});
+  const plate=metrics.filter(m=>m.xspan>=w*.9&&m.yspan>=h*.9&&m.zmin<.05).sort((a,b)=>b.area-a.area)[0];
+  const baseIndex=plate?.index??metrics.slice().sort((a,b)=>b.volume-a.volume)[0].index;
   for(let i=0;i<parts.length;i++){
    if(i===baseIndex)continue;
    const m=parts[i].getMesh(),stride=m.numProp,tris=m.triVerts,props=m.vertProperties;
@@ -96,7 +98,7 @@ function recoverPrintConnectivity(lib,result,w,h){
    for(let j=0;j<tris.length;j+=3){
     const p=Array.from(tris.slice(j,j+3),id=>Array.from(props.slice(id*stride,id*stride+3)));
     const area=Math.abs((p[1][0]-p[0][0])*(p[2][1]-p[0][1])-(p[1][1]-p[0][1])*(p[2][0]-p[0][0]))*.5;
-    if(area<.005)continue;
+    if(area<1e-10)continue;
     const z=p.reduce((v,q)=>v+q[2],0)/3;
     if(!candidate||z<candidate.z)candidate={x:p.reduce((v,q)=>v+q[0],0)/3,y:p.reduce((v,q)=>v+q[1],0)/3,z,area};
    }
