@@ -1,5 +1,5 @@
 import './core.js?hybrid=1';
-import './architecture.js?hybrid=1';
+import './architecture.js?hybrid=1&bergen=1';
 import {model3mf} from './official-export.mjs';
 import {buildSurface} from './surface-build.mjs?v=28-official-1';
 const RS=globalThis.RS;

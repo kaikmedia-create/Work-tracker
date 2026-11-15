@@ -25,3 +25,27 @@ test('v18 more than 100 point contacts form a valid solid without dropping any b
  assert(mesh.architecture.contactRepairs>100);assert(mesh.architecture.contactRepairs<=mesh.architecture.repairLimit);
  assert(mesh.architecture.repairLimit<=2048);assert(mesh.architecture.repairPasses<=4);assert.equal(mesh.geometryKernelVersion,18);
 });
+
+function bergenSeamCube(center=[-1,-1,2]){return {vertices:Float32Array.from([[-1,-1,0],[1,-1,0],[1,1,0],[-1,1,0],[-1,-1,2],[1,-1,2],[1,1,2],[-1,1,2],center].flat()),indices:Uint32Array.from([0,2,1,0,3,2,0,1,5,0,5,4,1,2,6,1,6,5,2,3,7,2,7,6,3,0,4,3,4,7,8,4,5,8,5,6,8,6,7,8,7,4])};}
+test('Bergen zero-area roof fan is repaired within 0.12 micrometres and remains watertight',()=>{
+ const mesh=bergenSeamCube(),before=mesh.vertices.slice();
+ assert.throws(()=>verifySolid(mesh),/zero-area triangles/);
+ const report=RS.architecture.repairRoundedZeroFaces(mesh,2,2);
+ assert.equal(report.fixed,2);assert.equal(report.remaining,0);assert(report.vertexNudges>0);
+ assert(report.maxNudgeMm<=.00012001);for(let i=0;i<mesh.vertices.length;i++){
+  assert(Math.abs(mesh.vertices[i]-before[i])<=.00012001);
+  if(i%3!==2)assert(Math.abs(mesh.vertices[i])<=1);
+ }
+ assert(Math.abs(verifySolid(mesh).volume-8)<.001);
+});
+test('Bergen geometry repair leaves valid roofs byte-identical',()=>{
+ const mesh=bergenSeamCube([0,0,2]),before=mesh.vertices.slice();
+ const report=RS.architecture.repairRoundedZeroFaces(mesh,2,2);
+ assert.equal(report.fixed,0);assert.equal(report.remaining,0);
+ assert.deepEqual(mesh.vertices,before);verifySolid(mesh);
+});
+test('Bergen geometry repair never caps a genuinely missing triangle',()=>{
+ const mesh=bergenSeamCube();mesh.indices=mesh.indices.slice(0,-3);
+ RS.architecture.repairRoundedZeroFaces(mesh,2,2);
+ assert.throws(()=>verifySolid(mesh),/every edge must have two opposite incident triangles/);
+});

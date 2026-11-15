@@ -588,6 +588,54 @@ function conformVerticalChains(mesh,bad,usage){
  if(extraLand.length){const old=mesh.landFaces,next=new Uint32Array(old.length+extraLand.length);next.set(old);next.set(extraLand,old.length);mesh.landFaces=next;}
  return extra.length/3;
 }
+
+/** Fix only Float32 zero-area faces left by exact retriangulation. Shared
+ * vertices move at most 0.12 micrometres in print space. Existing nonzero
+ * normals retain their winding; no missing face is capped or omitted. */
+function repairRoundedZeroFaces(mesh,W=Infinity,H=Infinity){
+ const p=mesh.vertices,t=mesh.indices;
+ const normal=k=>{const a=t[k]*3,b=t[k+1]*3,c=t[k+2]*3,x=p[b]-p[a],y=p[b+1]-p[a+1],z=p[b+2]-p[a+2],u=p[c]-p[a],v=p[c+1]-p[a+1],w=p[c+2]-p[a+2];return [y*w-z*v,z*u-x*w,x*v-y*u];};
+ const zero=n=>n[0]===0&&n[1]===0&&n[2]===0;
+ const triangles=[];for(let k=0;k<t.length;k+=3)if(zero(normal(k)))triangles.push(k);
+ if(!triangles.length)return {fixed:0,remaining:0,vertexNudges:0,maxNudgeMm:0};
+ if(triangles.length>4096)return {fixed:0,remaining:triangles.length,vertexNudges:0,maxNudgeMm:0};
+ const vertices=new Set(triangles.flatMap(k=>[t[k],t[k+1],t[k+2]])),incident=new Map([...vertices].map(id=>[id,[]]));
+ for(let k=0;k<t.length;k+=3)for(let j=0;j<3;j++)incident.get(t[k+j])?.push(k);
+ const original=new Map([...vertices].map(id=>[id,[p[id*3],p[id*3+1],p[id*3+2]]]));
+ const steps=[.000025,.00005,.00009,.00012],maximum=.00012;
+ let nudges=0,maxNudgeMm=0;
+ for(let pass=0;pass<4;pass++){
+  let changes=0;
+  for(const k of triangles){
+   if(!zero(normal(k)))continue;
+   let best=null;
+   for(const id of [...new Set([t[k],t[k+1],t[k+2]])]){
+    const adjacent=incident.get(id),before=adjacent.map(normal),missing=before.filter(zero).length,origin=original.get(id);
+    for(const axis of [0,1,2])for(const sign of [-1,1])for(const amount of steps){
+     const offset=id*3+axis,prev=p[offset],next=Math.fround(prev+sign*amount);
+     if(next===prev||(axis===0&&Math.abs(next)>W/2)||(axis===1&&Math.abs(next)>H/2)||(axis===2&&next<0))continue;
+     p[offset]=next;
+     const displacement=Math.hypot(p[id*3]-origin[0],p[id*3+1]-origin[1],p[id*3+2]-origin[2]);
+     if(displacement>maximum+1e-9){p[offset]=prev;continue;}
+     const after=adjacent.map(normal);let valid=!zero(normal(k)),remaining=0;
+     for(let j=0;j<before.length&&valid;j++){
+      const u=before[j],v=after[j];if(zero(v))remaining++;
+      if(!zero(u)&&(zero(v)||u[0]*v[0]+u[1]*v[1]+u[2]*v[2]<=0))valid=false;
+     }
+     if(valid&&remaining<missing){
+      const score=(axis===2?0:10000)+(missing-remaining)*1000-displacement*100;
+      if(!best||score>best.score)best={id,axis,next,displacement,score};
+     }
+     p[offset]=prev;
+    }
+   }
+   if(best){p[best.id*3+best.axis]=best.next;nudges++;changes++;maxNudgeMm=Math.max(maxNudgeMm,best.displacement);}
+  }if(!changes)break;
+ }
+ const remaining=triangles.filter(k=>zero(normal(k))).length;
+ return {fixed:triangles.length-remaining,remaining,vertexNudges:nudges,maxNudgeMm};
+}
+
 const raster=R.buildMesh;
 function buildArchitecture(data,settings,repairs=[],attempt=0,detailRetry=0){
  const tick=(step,done,total)=>R.meshProgress?.({step,done,total,pass:attempt+1});tick('Geländeraster',0,1);
@@ -648,6 +696,8 @@ function buildArchitecture(data,settings,repairs=[],attempt=0,detailRetry=0){
  }
  tick('Geschlossenen Körper prüfen',0,result.indices.length/3);const degenerate=retriangulateZeroArea(result);
  stats.zeroAreaRetriangulations=degenerate.fixed;
+ const precision=degenerate.remaining?repairRoundedZeroFaces(result,W,H):{fixed:0,remaining:0,maxNudgeMm:0};
+ stats.float32ZeroAreaRepairs=precision.fixed;stats.maxFloat32NudgeMm=precision.maxNudgeMm;
  // Two footprints touching at a single XY point create a non-manifold vertical
  // edge. Regularise ONLY the reported contacts, initially 0.004 mm wide
  // (at most 0.016384 mm after four bounded passes). Never inflate all buildings.
@@ -672,14 +722,14 @@ function buildArchitecture(data,settings,repairs=[],attempt=0,detailRetry=0){
   if(!additions.length)throw Error('Eine geometrische Naht konnte nicht repariert werden. Kein fehlerhaftes Modell wurde exportiert.');
   return buildArchitecture(data,settings,repairs.concat(additions),attempt+1,detailRetry);
  }
- if(degenerate.remaining){
+ if(precision.remaining){
   // A zero-area triangle caused by Float32 rounding is not repaired by
   // adding a roof cap; try alternative conforming terrain grids instead.
   // Every retry runs the complete contact, seam and manifold audit again.
   if(detailRetry<3&&n>65)return buildArchitecture(data,settings,[],0,detailRetry+1);
   const failure=Error('Eine flächenlose Gebäudenaht konnte nicht aufgelöst werden. Kein fehlerhaftes Modell wurde exportiert.');
   failure.code='GEOMETRY_ZERO_AREA';
-  failure.diagnostics={remaining:degenerate.remaining,retriangulated:degenerate.fixed,detailRetry,terrainGrid:n,buildings:stats.buildings};
+  failure.diagnostics={remaining:precision.remaining,precisionRepaired:precision.fixed,retriangulated:degenerate.fixed,detailRetry,terrainGrid:n,buildings:stats.buildings};
   throw failure;
  }
  let zmax=0;for(let i=2;i<result.vertices.length;i+=3)zmax=Math.max(zmax,result.vertices[i]);
@@ -851,5 +901,5 @@ function buildWithStreets(data,input){const s=R.cleanSettings(input),info=R.boun
  return addStreetRelief(mesh,data.roads,s,w,h,w/info.w);
 }
 
-Object.assign(R,{checkRoofPack,buildRasterMesh:raster,buildMesh:buildWithStreets,architecture:{architecturePatches,neighbourhoodRoofs,roofLookup,measuredRoof,referenceFor,referencePatches,importRoofSurfaces,conformVerticalChains,smoothTerrainGrid,roadCurve,roadAnchors,decompose,roofSpec,roofFrame,roofPieces,half,overlay,stitchSurface,buildArchitecture}});
+Object.assign(R,{checkRoofPack,buildRasterMesh:raster,buildMesh:buildWithStreets,architecture:{architecturePatches,neighbourhoodRoofs,roofLookup,measuredRoof,referenceFor,referencePatches,importRoofSurfaces,conformVerticalChains,repairRoundedZeroFaces,smoothTerrainGrid,roadCurve,roadAnchors,decompose,roofSpec,roofFrame,roofPieces,half,overlay,stitchSurface,buildArchitecture}});
 })(globalThis.RS);
