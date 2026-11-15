@@ -7,6 +7,7 @@ import {contactEnvelope} from './survey29.js';
 import {validateSolid,sourceError} from './official-geometry.mjs';
 import {readLimited} from './official-archive.mjs';
 import {selectOfficial} from './official-sources.mjs';
+import {buildBuildingEvidence} from './official-evidence.mjs';
 let kernel;
 const vendor='https://cdn.jsdelivr.net/npm/manifold-3d@3.5.4/';
 const hashes={js:'ca3c8a88df63bb3083013d1eb7f700bf23216594f6e98a2566e34f55d7341ce8',wasm:'73e3b419ad31294f6b1cc478173944e50efc4a34bfdeeff0107bdfc12975f11c'};
@@ -16,18 +17,43 @@ export async function loadKernel(){
 }
 function makeBody(lib,vertices,indices,classes){const props=new Float32Array(vertices.length/3*4);for(let i=0;i<vertices.length/3;i++){props.set(vertices.slice(i*3,i*3+3),i*4);props[i*4+3]=classes?.[i]??1;}const input=new lib.Mesh({numProp:4,vertProperties:props,triVerts:Uint32Array.from(indices)});input.merge();const body=new lib.Manifold(input);if(body.status()!=='NoError'){const reason=body.status();body.delete();throw sourceError('Nicht druckbarer Quellkörper: '+reason,'OFFICIAL_TOPOLOGY');}return body;}
 function normalizedFootprints(R,data,models){return models.flatMap(m=>m.footprints.map(rings=>{const r=rings.map(r=>R.normalized(data.bounds,r));return {rings:r,box:R.ringBox(r[0])};}));}
-function schematicBase(R,data,models){
- const polys=normalizedFootprints(R,data,models),bins=new Map();const cells=box=>{const out=[];for(let y=Math.max(-1,Math.floor(box[1]*24));y<=Math.min(24,Math.floor(box[3]*24));y++)for(let x=Math.max(-1,Math.floor(box[0]*24));x<=Math.min(24,Math.floor(box[2]*24));x++)out.push(x+','+y);return out;};
+/** Official surfaces replace only the footprints they actually cover.
+ * Preserve mapped roofs, separately mapped parts and supplied reference roofs
+ * for every untouched building. Only clipped remnants become schematic.
+ */
+export function schematicBase(R,data,models){
+ const polys=normalizedFootprints(R,data,models),bins=new Map();
+ const cells=box=>{const out=[];for(let y=Math.max(-1,Math.floor(box[1]*24));y<=Math.min(24,Math.floor(box[3]*24));y++)for(let x=Math.max(-1,Math.floor(box[0]*24));x<=Math.min(24,Math.floor(box[2]*24));x++)out.push(x+','+y);return out;};
  polys.forEach((p,i)=>{for(const key of cells(p.box)){if(!bins.has(key))bins.set(key,[]);bins.get(key).push(i);}});
- const buildings=[];let replaced=0;
- for(const b of data.buildings){const hits=[...new Set(cells(R.ringBox(b.rings[0])).flatMap(k=>bins.get(k)||[]))];let remaining=[b.rings];
-  if(hits.length){remaining=clip.difference([b.rings],...hits.map(i=>[polys[i].rings]));if(JSON.stringify(remaining)!==JSON.stringify([b.rings]))replaced++;}
-  for(let i=0;i<remaining.length;i++){const rings=remaining[i];if(!rings.length)continue;
-   const tags={...b.tags,'roof:shape':'flat'};for(const k of ['roof:height','roof:angle','roof:levels','roof:orientation','building:roof:shape','building:roof:height'])delete tags[k];
+ const buildings=[],roofAudit={preservedMappedRoofs:0,preservedDetailedRoofs:0,preservedPartRelations:0,clippedFragments:0,clippedRoofDowngrades:0};
+ let replaced=0;
+ for(const b of data.buildings){
+  const hits=[...new Set(cells(R.ringBox(b.rings[0])).flatMap(k=>bins.get(k)||[]))];
+  const remaining=hits.length?clip.difference([b.rings],...hits.map(i=>[polys[i].rings])):[b.rings];
+  const untouched=JSON.stringify(remaining)===JSON.stringify([b.rings]);
+  if(untouched){
+   // Original ID and references must remain stable for architecturePatches().
+   buildings.push(b);
+   if(b.tags?.['roof:shape']||b.tags?.['building:roof:shape'])roofAudit.preservedMappedRoofs++;
+   if(b.detailRoof)roofAudit.preservedDetailedRoofs++;
+   if(b.partIds?.length)roofAudit.preservedPartRelations++;
+   continue;
+  }
+  replaced++;
+  for(let i=0;i<remaining.length;i++){
+   const rings=remaining[i];if(!rings.length)continue;
+   // A roof description for an original footprint cannot be assumed valid
+   // after a complete 3D official body has cut away part of that footprint.
+   const tags={...b.tags,'roof:shape':'flat'};
+   for(const k of ['roof:height','roof:angle','roof:levels','roof:orientation','roof:direction','building:roof:shape','building:roof:height'])delete tags[k];
    buildings.push({...b,id:'schematic:'+b.id+':'+i,rings,tags,detailRoof:null,partIds:[],height:Math.max(.3,b.height),heightSource:b.heightSource||'Schätzwert'});
+   roofAudit.clippedFragments++;
+   if(b.detailRoof||b.tags?.['roof:shape']||b.tags?.['building:roof:shape'])roofAudit.clippedRoofDowngrades++;
   }
  }
- return {data:{...data,buildings,trees:[],roofPack:null},replaced,schematic:buildings.length};
+ // Roof packs are still eligible for untouched OSM buildings. Clipped
+ // fragments have an explicit flat shape, and thus cannot match a roof pack.
+ return {data:{...data,buildings,trees:[],roofPack:data.roofPack||null},replaced,schematic:buildings.length,roofAudit};
 }
 function foundation(lib,vertices,triangle){
  let top=triangle.map(i=>Array.from(vertices.slice(i*3,i*3+3)));const cross=(top[1][0]-top[0][0])*(top[2][1]-top[0][1])-(top[1][1]-top[0][1])*(top[2][0]-top[0][0]);
@@ -69,7 +95,7 @@ export async function buildOfficial(R,data,settings,{signal=AbortSignal.timeout(
  R.meshProgress?.({step:'Gelände und ausdrücklich schematische Datenlücken',pass:1});
  let base;try{base=R.buildMesh(prepared.data,s);}catch(e){if(!data.sourceAudit)throw e;base=contactEnvelope(R,prepared.data,s,e);}
  const mesh=selected.models.length?await unionOfficial(R,data,s,base,selected.models,await kernelLoader(),{signal}):base;
- mesh.officialAudit={...selected.audit,schematic:prepared.schematic,replacedMappedFootprints:prepared.replaced,strictScale:true,warning:'Amtliche LoD2-Flächen können bereits generalisiert sein. Fehlende Fassadendetails werden nicht erfunden.'};
+ mesh.officialAudit={...selected.audit,schematic:prepared.schematic,replacedMappedFootprints:prepared.replaced,roofPreservation:prepared.roofAudit,buildingEvidence:buildBuildingEvidence(selected.models,prepared.data.buildings,s),strictScale:true,warning:'Amtliche LoD2-Flächen können bereits generalisiert sein. Fehlende Fassadendetails werden nicht erfunden.'};
  mesh.officialCache=selected.cache;
  mesh.surveyReason=`Flächen zuerst: ${selected.audit.direct} direkte Modelle · ${selected.audit.derived} aus klassifizierten Messpunkten · ${prepared.schematic} schematische Kartenkörper. `+(selected.audit.reports.filter(r=>r.reason).map(r=>r.reason).join(' ')||'Dach- und Wandflächen unverändert übernommen; Ausschnitt und Druckfundament gesondert angepasst.');
  return mesh;
