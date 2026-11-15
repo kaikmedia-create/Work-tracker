@@ -78,6 +78,44 @@ function foundation(lib,vertices,triangle){
  if(Math.abs(cross)<1e-12)return null;if(cross<0)top.reverse();
  const v=Float32Array.from([...top.map(p=>[p[0],p[1],.02]),...top.map(p=>[p[0],p[1],p[2]+.001])].flat()),ix=[2,1,0,3,4,5,0,1,4,0,4,3,1,2,5,1,5,4,2,0,3,2,3,5];return makeBody(lib,v,ix);
 }
+/** Repair only a physically disconnected *print component*. A support post is
+ * added under its lowest supported horizontal face, never by moving a source
+ * vertex or changing a roof plane. The post is explicitly reported in 3MF.
+ * Fail closed if a finite, in-bounds printable support cannot be placed.
+ */
+function recoverPrintConnectivity(lib,result,w,h){
+ const parts=result.decompose(),audit=[],posts=[];
+ try{
+  if(parts.length===1)return {result,audit};
+  if(parts.length>64)throw sourceError('Zu viele getrennte amtliche Druckkörper.','OFFICIAL_DISCONNECTED');
+  const baseIndex=parts.map(p=>p.volume()).indexOf(Math.max(...parts.map(p=>p.volume())));
+  for(let i=0;i<parts.length;i++){
+   if(i===baseIndex)continue;
+   const m=parts[i].getMesh(),stride=m.numProp,tris=m.triVerts,props=m.vertProperties;
+   let candidate=null;
+   for(let j=0;j<tris.length;j+=3){
+    const p=Array.from(tris.slice(j,j+3),id=>Array.from(props.slice(id*stride,id*stride+3)));
+    const area=Math.abs((p[1][0]-p[0][0])*(p[2][1]-p[0][1])-(p[1][1]-p[0][1])*(p[2][0]-p[0][0]))*.5;
+    if(area<.005)continue;
+    const z=p.reduce((v,q)=>v+q[2],0)/3;
+    if(!candidate||z<candidate.z)candidate={x:p.reduce((v,q)=>v+q[0],0)/3,y:p.reduce((v,q)=>v+q[1],0)/3,z,area};
+   }
+   if(!candidate)throw sourceError('Abgetrenntes Bauteil besitzt keine tragfähige Unterseite.','OFFICIAL_DISCONNECTED');
+   const {x,y,z,area}=candidate,side=Math.min(1,Math.max(.35,Math.sqrt(area)*.3)),bottom=.01,top=z+.8;
+   if(!Number.isFinite(top)||top<=bottom+.1||top>Math.max(65,w)||Math.abs(x)+side/2>=w/2||Math.abs(y)+side/2>=h/2)
+    throw sourceError('Abgetrenntes Bauteil kann nicht innerhalb des Druckausschnitts gestützt werden.','OFFICIAL_DISCONNECTED');
+   const a=side/2,v=Float32Array.from([[x-a,y-a,bottom],[x+a,y-a,bottom],[x+a,y+a,bottom],[x-a,y+a,bottom],[x-a,y-a,top],[x+a,y-a,top],[x+a,y+a,top],[x-a,y+a,top]].flat());
+   const faces=[0,3,2,0,2,1,0,1,5,0,5,4,1,2,6,1,6,5,2,3,7,2,7,6,3,0,4,3,4,7,4,5,6,4,6,7];
+   posts.push(makeBody(lib,v,faces));
+   audit.push({kind:'print-support',sourceGeometryChanged:false,component:i,widthMm:side,heightMm:top-bottom,xyMm:[x,y]});
+  }
+  const joined=lib.Manifold.union([result,...posts]);
+  if(joined.status()!=='NoError'){joined.delete();throw sourceError('Zusätzliche Druckstützen konnten nicht verbunden werden.','OFFICIAL_DISCONNECTED');}
+  const after=joined.decompose(),count=after.length;for(const p of after)p.delete();
+  if(count!==1){joined.delete();throw sourceError('Modell bleibt trotz '+audit.length+' zusätzlicher Druckstützen in '+count+' Komponenten getrennt.','OFFICIAL_DISCONNECTED');}
+  return {result:joined,audit};
+ }finally{for(const p of parts)p.delete();for(const p of posts)p.delete();}
+}
 /** Exported for deterministic geometry tests with an injected kernel. */
 export async function unionOfficial(R,data,s,base,models,lib,{signal}={}){
  const info=R.boundsInfo(data.bounds),w=s.modelWidth,h=w*info.h/info.w,scale=w/info.w,ground=R.architecture.smoothTerrainGrid(data.terrain,s.terrainSmooth);let low=Infinity;for(const z of data.terrain.values)low=Math.min(low,z);
@@ -102,10 +140,10 @@ export async function unionOfficial(R,data,s,base,models,lib,{signal}={}){
   }
   if(batch.length){const next=keep(lib.Manifold.union([result,...batch]));drop(result);for(const m of batch)drop(m);result=next;}
   if(result.status()!=='NoError'||!(result.volume()>0))throw sourceError('Amtliches Gesamtmodell ist nicht druckbar.','OFFICIAL_BOOLEAN');
-  const components=result.decompose();const count=components.length;for(const part of components)part.delete();if(count!==1)throw sourceError('Amtliche Gebäudeteile sind nicht mit dem Drucksockel verbunden.','OFFICIAL_DISCONNECTED');
+  const joined=recoverPrintConnectivity(lib,result,w,h);if(joined.result!==result){const next=keep(joined.result);drop(result);result=next;}const printSupportAudit=joined.audit;
   const out=result.getMesh(),vertices=new Float32Array(out.numVert*3),classes=new Uint8Array(out.numVert);let zmax=0;
   for(let i=0;i<out.numVert;i++){const p=i*out.numProp;vertices.set(out.vertProperties.slice(p,p+3),i*3);classes[i]=Math.round(R.clamp(out.vertProperties[p+3]||0,0,7));zmax=Math.max(zmax,vertices[i*3+2]);}
-  return {...base,vertices,classes,indices:Uint32Array.from(out.triVerts),zmax,landFaces:undefined,preview:undefined,kind:'architecture',officialPlacement:audit,booleanKernel:'Manifold 3.5.4; SHA-256 pinned',buildingCount:base.buildingCount+audit.length};
+  return {...base,vertices,classes,indices:Uint32Array.from(out.triVerts),zmax,landFaces:undefined,preview:undefined,kind:'architecture',officialPlacement:audit,printSupportAudit,booleanKernel:'Manifold 3.5.4; SHA-256 pinned',buildingCount:base.buildingCount+audit.length};
  }finally{for(const b of alive)b.delete();}
 }
 export async function buildOfficial(R,data,settings,{signal=AbortSignal.timeout(90000),loader,server=false,kernelLoader=loadKernel}={}){
@@ -113,7 +151,7 @@ export async function buildOfficial(R,data,settings,{signal=AbortSignal.timeout(
  R.meshProgress?.({step:'Gelände und ausdrücklich schematische Datenlücken',pass:1});
  let base;try{base=R.buildMesh(prepared.data,s);}catch(e){if(!data.sourceAudit)throw e;base=contactEnvelope(R,prepared.data,s,e);}
  const mesh=selected.models.length?await unionOfficial(R,data,s,base,selected.models,await kernelLoader(),{signal}):base;
- mesh.officialAudit={...selected.audit,schematic:prepared.schematic,replacedMappedFootprints:prepared.replaced,roofPreservation:prepared.roofAudit,buildingEvidence:buildBuildingEvidence(selected.models,prepared.data.buildings,s),strictScale:true,warning:'Amtliche LoD2-Flächen können bereits generalisiert sein. Fehlende Fassadendetails werden nicht erfunden.'};
+ mesh.officialAudit={...selected.audit,schematic:prepared.schematic,replacedMappedFootprints:prepared.replaced,roofPreservation:prepared.roofAudit,buildingEvidence:buildBuildingEvidence(selected.models,prepared.data.buildings,s),printSupports:mesh.printSupportAudit||[],strictScale:true,warning:'Amtliche LoD2-Flächen können bereits generalisiert sein. Fehlende Fassadendetails werden nicht erfunden.'};
  mesh.officialCache=selected.cache;
  mesh.surveyReason=`Flächen zuerst: ${selected.audit.direct} direkte Modelle · ${selected.audit.derived} aus klassifizierten Messpunkten · ${prepared.schematic} schematische Kartenkörper. `+(selected.audit.reports.filter(r=>r.reason).map(r=>r.reason).join(' ')||'Dach- und Wandflächen unverändert übernommen; Ausschnitt und Druckfundament gesondert angepasst.');
  return mesh;
