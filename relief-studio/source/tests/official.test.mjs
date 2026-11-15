@@ -1,4 +1,4 @@
-import test from 'node:test';import assert from 'node:assert/strict';import {readFile,mkdtemp,writeFile} from 'node:fs/promises';import {tmpdir} from 'node:os';import {join} from 'node:path';import {pathToFileURL} from 'node:url';import {createHash} from 'node:crypto';
+import test from 'node:test';import assert from 'node:assert/strict';import {readFile,mkdtemp,writeFile} from 'node:fs/promises';import {tmpdir} from 'node:os';import {join} from 'node:path';import {pathToFileURL} from 'node:url';import {createHash} from 'node:crypto';import {gunzipSync} from 'node:zlib';
 import '../public/core.js';import '../public/architecture.js';
 import {solidFromSurfaces,validateSolid,fromUTM,toUTM,parseCityGML,parseCityJSON} from '../public/official-geometry.mjs';
 import {derivePointBuilding} from '../public/official-points.mjs';import {selectOfficial,importOfficial,LGL} from '../public/official-sources.mjs';
@@ -31,7 +31,7 @@ test('prepared pack imports offline and rejects oversize/bad zip',async()=>{cons
 test('full source shell is united with terrain without building exaggeration',async()=>{const s=R.cleanSettings({mode:'model',modelWidth:100,resolution:65,frame:1,roadRelief:0,buildingFactor:9,landmarkFactor:9});const mesh=await buildSurface(R,data(),s,{kernelLoader:kernel});assert.equal(mesh.officialAudit.direct,1);assert.equal(mesh.kind,'architecture');assert.equal(mesh.preview,undefined);assert(Math.abs(mesh.zmax-23)<.01);assert.equal(mesh.officialPlacement.length,1);assert.equal(mesh.officialAudit.buildingEvidence.counts.exact,1);assert.equal(mesh.officialAudit.buildingEvidence.schema,'rs-building-evidence-1');
  const edges=new Map(),key=i=>Array.from(mesh.vertices.slice(i*3,i*3+3)).join(',');let vol=0;
  for(let j=0;j<mesh.indices.length;j+=3){const ids=Array.from(mesh.indices.slice(j,j+3)),vs=ids.map(i=>Array.from(mesh.vertices.slice(i*3,i*3+3)));const [a,b,c]=vs;vol+=(a[0]*(b[1]*c[2]-b[2]*c[1])+a[1]*(b[2]*c[0]-b[0]*c[2])+a[2]*(b[0]*c[1]-b[1]*c[0]))/6;for(let k=0;k<3;k++){const a=key(ids[k]),b=key(ids[(k+1)%3]),e=a<b?a+'|'+b:b+'|'+a,old=edges.get(e)||[0,0];old[0]++;old[1]+=a<b?1:-1;edges.set(e,old);}}
- assert(vol>0);assert([...edges.values()].every(([n,o])=>n===2&&o===0));const stl=R.stl(mesh);assert.equal(new DataView(stl).getUint32(80,true),mesh.indices.length/3);const zip=await model3mf(R,mesh,'QA & <official>').arrayBuffer();const text=new TextDecoder().decode(zip);assert(text.includes('surfaces-first-v1'));assert(text.includes('Metadata/sources.json'));assert(text.includes('QA &amp; &lt;official&gt;'));
+ assert(vol>0);assert([...edges.values()].every(([n,o])=>n===2&&o===0));const stl=R.stl(mesh);assert.equal(new DataView(stl).getUint32(80,true),mesh.indices.length/3);const zip=await model3mf(R,mesh,'QA & <official>').arrayBuffer();const text=new TextDecoder().decode(zip);assert(text.includes('surfaces-first-v1'));assert(text.includes('Metadata/sources.json'));assert(text.includes('rs-building-evidence-1'));assert(text.includes('QA &amp; &lt;official&gt;'));
 });
 
 test('official mode preserves all mapped roofs, supplied references and church parts outside surface coverage',()=>{
@@ -87,4 +87,16 @@ test('evidence distinguishes direct surfaces, classified measurement, tagged roo
  assert.equal(audit.buildings[2].heightTier,'inferred');
  assert.equal(audit.buildings[3].heightTier,'fallback');
  assert.equal(audit.buildings[4].heightTier,'measured');
+});
+test('built-in LoD2 archives are valid gzip, indexed correctly and have accepted closed shells',async()=>{
+ const index=JSON.parse(await readFile(new URL('../public/official-data/index.json',import.meta.url)));
+ assert.equal(index.schema,1);
+ for(const tile of index.tiles){
+  const bytes=await readFile(new URL('../public/official-data/'+tile.file,import.meta.url));
+  const bundle=JSON.parse(gunzipSync(bytes));
+  assert.equal(bundle.schema,'rs-official-pack-1');
+  assert.equal(bundle.models.length,tile.models);
+  assert.equal(bundle.rejected.length,tile.rejected||0);
+  for(const m of bundle.models)validateSolid(m);
+ }
 });
