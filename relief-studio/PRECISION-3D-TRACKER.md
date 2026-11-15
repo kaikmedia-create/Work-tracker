@@ -9,6 +9,12 @@ Stand: 15.11.2026. Dieses Dokument grenzt die verifizierbare Änderung vom langf
 - Die bestehende 3MF-Metadaten-Datei übernimmt den neuen Gebäude-QA-Nachweis.
 - Automatische Tests prüfen erhaltene Gebäude-Teile, Dachrichtungen, beschnittene Restflächen, Quellenklassen sowie bestehende exakte STL-/3MF-Exporte.
 
+## Datenintegrität der mitgelieferten amtlichen Modelle
+Der CI-Lauf vom 15.11.2026 zeigte defekte Gzip-Streams der zuvor veröffentlichten LGL-LoD2-Pakete. Für die beiden dokumentierten Ausschnitte wurden die Original-Archive erneut vom LGL geladen und die gültigen, konservativ geprüften CityGML-Körper neu verpackt:
+- **Burg Windeck:** 6 validierte Volumenkörper, 0 verworfen.
+- **Wachenburg:** 11 validierte Volumenkörper, 2 offene/nichtmannigfaltige Modelle bewusst verworfen.
+Die Quelle bleibt LGL Baden-Württemberg (dl-de/by-2-0). Die relevanten Archivprüfsummen stehen in der Modellprovenienz, das Paketverzeichnis nennt das Aktualisierungsdatum. Die frühere Zahl 2/15 beschreibt die alte Veröffentlichung, nicht die neu geprüften Pakete. Ein dedizierter Gzip-/Solid-Test verhindert eine unbemerkte Wiederholung dieses Schadens. Diese Pakete decken weiterhin **nicht** ganz Weinheim ab.
+
 ## Verbindliche Freigabebedingung
 `cd relief-studio/source && npm test` muss erfolgreich sein. CI enthält unter `CI=1` zusätzliche echte Browser-/Export- und amtliche Datenprüfungen. Ein fehlgeschlagener externer Anbieter, ein falscher Höhenbezug oder eine nichtmannigfaltige Geometrie blockiert die Behauptung einer vollständigen Freigabe. Keine Änderungen außerhalb von `relief-studio/`.
 
