@@ -2,7 +2,9 @@ import test from 'node:test';import assert from 'node:assert/strict';import {rea
 import '../public/core.js';import '../public/architecture.js';
 import {solidFromSurfaces,validateSolid,fromUTM,toUTM,parseCityGML,parseCityJSON} from '../public/official-geometry.mjs';
 import {derivePointBuilding} from '../public/official-points.mjs';import {selectOfficial,importOfficial,LGL} from '../public/official-sources.mjs';
-import {buildSurface} from '../public/surface-build.mjs';import {readGMLZip} from '../public/official-archive.mjs';import {model3mf} from '../public/official-export.mjs';
+import {buildSurface} from '../public/surface-build.mjs';
+import {schematicBase} from '../public/official-mesh.mjs';
+import {buildBuildingEvidence} from '../public/official-evidence.mjs';import {readGMLZip} from '../public/official-archive.mjs';import {model3mf} from '../public/official-export.mjs';
 const R=globalThis.RS,source={...LGL,provider:'SYNTHETIC QA',attribution:'Synthetic geometry, not an official building'};
 const P=[[476900,5488400,100],[476930,5488400,100],[476930,5488430,100],[476900,5488430,100],[476900,5488400,115],[476930,5488400,120],[476930,5488430,120],[476900,5488430,115]];
 const faces=[[0,3,2,1],[0,1,5,4],[1,2,6,5],[2,3,7,6],[3,0,4,7],[4,5,6,7]],kinds=['GroundSurface','WallSurface','WallSurface','WallSurface','WallSurface','RoofSurface'];
@@ -26,8 +28,63 @@ test('source surfaces win; point algorithm does not overwrite them',async()=>{co
 test('unavailable source is not evidence that surfaces do not exist',async()=>{const d=data();delete d.officialInput;d.officialPoints=points();const out=await selectOfficial(d,{loader:async()=>({schema:'rs-official-pack-1',models:[],rejected:[],reports:[{provider:'QA',status:'unavailable',bounds}]})});assert.equal(out.audit.derived,0);assert.equal(out.audit.pointAudit[0].status,'blocked');});
 test('confirmed absence allows classified-point fallback; missing proof blocks it',async()=>{const d=data();d.officialInput={schema:'rs-official-pack-1',models:[],rejected:[]};d.officialPoints=points();let out=await selectOfficial(d);assert.equal(out.audit.derived,1);delete d.officialPoints.buildings[0].surfaceCheck;out=await selectOfficial(d);assert.equal(out.audit.derived,0);});
 test('prepared pack imports offline and rejects oversize/bad zip',async()=>{const r=await importOfficial(new TextEncoder().encode(JSON.stringify(pack)),'test.json',bounds);assert.equal(r.surfaces.models.length,1);await assert.rejects(()=>readGMLZip(new Uint8Array([80,75,0,0])));});
-test('full source shell is united with terrain without building exaggeration',async()=>{const s=R.cleanSettings({mode:'model',modelWidth:100,resolution:65,frame:1,roadRelief:0,buildingFactor:9,landmarkFactor:9});const mesh=await buildSurface(R,data(),s,{kernelLoader:kernel});assert.equal(mesh.officialAudit.direct,1);assert.equal(mesh.kind,'architecture');assert.equal(mesh.preview,undefined);assert(Math.abs(mesh.zmax-23)<.01);assert.equal(mesh.officialPlacement.length,1);
+test('full source shell is united with terrain without building exaggeration',async()=>{const s=R.cleanSettings({mode:'model',modelWidth:100,resolution:65,frame:1,roadRelief:0,buildingFactor:9,landmarkFactor:9});const mesh=await buildSurface(R,data(),s,{kernelLoader:kernel});assert.equal(mesh.officialAudit.direct,1);assert.equal(mesh.kind,'architecture');assert.equal(mesh.preview,undefined);assert(Math.abs(mesh.zmax-23)<.01);assert.equal(mesh.officialPlacement.length,1);assert.equal(mesh.officialAudit.buildingEvidence.counts.exact,1);assert.equal(mesh.officialAudit.buildingEvidence.schema,'rs-building-evidence-1');
  const edges=new Map(),key=i=>Array.from(mesh.vertices.slice(i*3,i*3+3)).join(',');let vol=0;
  for(let j=0;j<mesh.indices.length;j+=3){const ids=Array.from(mesh.indices.slice(j,j+3)),vs=ids.map(i=>Array.from(mesh.vertices.slice(i*3,i*3+3)));const [a,b,c]=vs;vol+=(a[0]*(b[1]*c[2]-b[2]*c[1])+a[1]*(b[2]*c[0]-b[0]*c[2])+a[2]*(b[0]*c[1]-b[1]*c[0]))/6;for(let k=0;k<3;k++){const a=key(ids[k]),b=key(ids[(k+1)%3]),e=a<b?a+'|'+b:b+'|'+a,old=edges.get(e)||[0,0];old[0]++;old[1]+=a<b?1:-1;edges.set(e,old);}}
  assert(vol>0);assert([...edges.values()].every(([n,o])=>n===2&&o===0));const stl=R.stl(mesh);assert.equal(new DataView(stl).getUint32(80,true),mesh.indices.length/3);const zip=await model3mf(R,mesh,'QA & <official>').arrayBuffer();const text=new TextDecoder().decode(zip);assert(text.includes('surfaces-first-v1'));assert(text.includes('Metadata/sources.json'));assert(text.includes('QA &amp; &lt;official&gt;'));
+});
+
+test('official mode preserves all mapped roofs, supplied references and church parts outside surface coverage',()=>{
+ const ring=(x,y,X,Y)=>[[x,y],[X,y],[X,Y],[x,Y],[x,y]];
+ const church={id:'way/1',rings:[ring(.15,.15,.6,.6)],partIds:['way/tower'],tags:{building:'church','roof:shape':'gabled','roof:height':'4','roof:direction':'90'},height:18,heightSource:'OSM-Höhe',landmark:true};
+ const tower={id:'way/tower',rings:[ring(.15,.15,.3,.3)],partIds:[],tags:{'building:part':'yes','roof:shape':'pyramidal'},height:28,landmark:true};
+ const referenced={id:'way/detail',rings:[ring(.65,.65,.8,.8)],partIds:[],tags:{building:'yes'},height:12,detailRoof:{ref:'Curated QA roof'}};
+ const roofPack={schema:'rs-roofs-1',source:'Synthetic QA',entries:[]};
+ const prepared=schematicBase(R,{...data(),buildings:[church,tower,referenced],roofPack},[]);
+ assert.equal(prepared.data.buildings[0],church);
+ assert.equal(prepared.data.buildings[1],tower);
+ assert.equal(prepared.data.buildings[2],referenced);
+ assert.equal(prepared.data.roofPack,roofPack);
+ assert.equal(prepared.data.buildings[0].tags['roof:direction'],'90');
+ assert.deepEqual(prepared.data.buildings[0].partIds,['way/tower']);
+ assert.equal(prepared.roofAudit.preservedMappedRoofs,2);
+ assert.equal(prepared.roofAudit.preservedDetailedRoofs,1);
+ assert.equal(prepared.roofAudit.preservedPartRelations,1);
+ assert.equal(prepared.replaced,0);
+ const evidence=buildBuildingEvidence([],prepared.data.buildings);
+ assert.equal(evidence.counts.inferred,3);
+ assert.equal(evidence.buildings[0].landmark,true);
+ assert.equal(evidence.buildings[2].roofSource,'Curated QA roof');
+});
+
+test('official surface clips only overlapping schematic remainders; no copied roof orientation or false exact tier',()=>{
+ const ring=(x,y,X,Y)=>[[x,y],[X,y],[X,Y],[x,Y],[x,y]],r=ring(.1,.1,.9,.9);
+ const b={id:'way/55',rings:[r],tags:{building:'yes','roof:shape':'gabled','roof:height':'3','roof:direction':'90'},height:12};
+ const native={footprints:[[ring(.42,.42,.68,.68)]]};
+ const mock={normalized:(_bounds,rings)=>rings,ringBox:pts=>[Math.min(...pts.map(p=>p[0])),Math.min(...pts.map(p=>p[1])),Math.max(...pts.map(p=>p[0])),Math.max(...pts.map(p=>p[1]))]};
+ const prepared=schematicBase(mock,{bounds:[0,0,1,1],buildings:[b]},[native]);
+ assert.equal(prepared.replaced,1);
+ assert(prepared.data.buildings.length>0);
+ for(const part of prepared.data.buildings){assert.match(part.id,/^schematic:way\/55:/);assert.equal(part.tags['roof:shape'],'flat');assert.equal(part.tags['roof:direction'],undefined);}
+ assert.equal(prepared.roofAudit.clippedRoofDowngrades,prepared.data.buildings.length);
+ const evidence=buildBuildingEvidence([],prepared.data.buildings);
+ assert.equal(evidence.counts.fallback,prepared.data.buildings.length);
+ assert(evidence.buildings.every(row=>row.clippedRemainder&&row.tier==='fallback'));
+});
+
+test('evidence distinguishes direct surfaces, classified measurement, tagged roofs and fallback',()=>{
+ const b=points(),measured=derivePointBuilding(b,b.buildings[0]);
+ const schematic=[
+  {id:'way/roof',tags:{'roof:shape':'hipped',height:'13'},heightSource:'OSM-Höhe'},
+  {id:'way/plain',tags:{building:'yes'},heightSource:'Schätzwert'},
+  {id:'way/height',tags:{building:'yes'},measuredHeight:{coverage:.86},heightSource:'Messhöhe · robust im Grundriss'}
+ ];
+ const audit=buildBuildingEvidence([model,measured],schematic);
+ assert.equal(audit.schema,'rs-building-evidence-1');
+ assert.deepEqual(audit.counts,{exact:1,measured:1,inferred:1,fallback:2});
+ assert.equal(audit.buildings[0].roofSource,source.url);
+ assert.equal(audit.buildings[1].roofCoverage,measured.quality.coverage);
+ assert.equal(audit.buildings[2].heightTier,'inferred');
+ assert.equal(audit.buildings[3].heightTier,'fallback');
+ assert.equal(audit.buildings[4].heightTier,'measured');
 });
