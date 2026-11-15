@@ -5,8 +5,15 @@ const run=promisify(execFile),root=resolve(fileURLToPath(new URL('../../',import
 test('Chromium: PIN, policy, exact exports, native LGL shells on terrain',{skip:!process.env.CI&&!process.env.RELIEF_BROWSER,timeout:300000},async()=>{
  const temp=await mkdtemp(join(tmpdir(),'rs-browser-'));await run('npm',['install','--prefix',temp,'--ignore-scripts','--no-audit','--no-fund','playwright@1.57.0'],{timeout:60000});
  const {chromium}=await import(pathToFileURL(join(temp,'node_modules/playwright/index.mjs')));
- await run(process.execPath,[join(temp,'node_modules/playwright/cli.js'),'install','chromium','--only-shell'],{timeout:120000});
- let browser;try{browser=await chromium.launch({args:['--no-sandbox','--disable-gpu']});}catch(e){console.log('OFFICIAL_BROWSER_START_ERROR',e.message.slice(0,3500));throw Error('Chromium launch failed; see bounded diagnostic above.');}
+ let downloadOK=true;
+ try{await run(process.execPath,[join(temp,'node_modules/playwright/cli.js'),'install','chromium','--only-shell'],{timeout:120000});}
+ catch(e){downloadOK=false;console.log('OFFICIAL_BROWSER_DOWNLOAD_ERROR',String(e.stderr||e.stdout||e.message).slice(0,4000));}
+ // GitHub-hosted Linux runners also provide system Chrome. Always run the
+ // browser assertions; a temporary Playwright CDN failure must not hide them.
+ let browser,lastError;
+ const choices=downloadOK?[{}, {channel:'chrome'}]:[{channel:'chrome'}, {}];
+ for(const options of choices){try{browser=await chromium.launch({...options,args:['--no-sandbox','--disable-gpu']});console.log('OFFICIAL_BROWSER_ENGINE',options.channel||'playwright-chromium');break;}catch(e){lastError=e;console.log('OFFICIAL_BROWSER_START_ERROR',String(e.message).slice(0,1000));}}
+ if(!browser)throw Error('Neither Playwright Chromium nor installed Chrome could launch: '+String(lastError?.message||'unknown').slice(0,2000));
  const server=createServer(async(req,res)=>{try{let path=resolve(root,'.'+decodeURIComponent(new URL(req.url,'http://local').pathname));if(path!==root&&!path.startsWith(root+'/'))throw Error('path');if((await stat(path)).isDirectory())path=join(path,'index.html');const body=await readFile(path);res.writeHead(200,{'Content-Type':({'.html':'text/html','.js':'text/javascript','.mjs':'text/javascript','.json':'application/json','.css':'text/css','.svg':'image/svg+xml','.wasm':'application/wasm'}[extname(path)]||'application/octet-stream')});res.end(body);}catch{res.writeHead(404);res.end('missing');}});await new Promise(r=>server.listen(0,'127.0.0.1',r));
  const url='http://127.0.0.1:'+server.address().port+'/';
  try{
