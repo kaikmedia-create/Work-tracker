@@ -18,7 +18,7 @@ async function verified(name,hash,signal){const b=await readLimited(await fetch(
  */
 export function relocateVerifiedWasmURL(bytes){
  const code=new TextDecoder('utf-8',{fatal:true}).decode(bytes);
- const pattern=/(new URL\\(\\s*['"]manifold\\.wasm['"]\\s*,\\s*)import\\.meta\\.url(\\s*\\))/g;
+ const pattern=/(new URL\(\s*['"]manifold\.wasm['"]\s*,\s*)import\.meta\.url(\s*\))/g;
  const matches=[...code.matchAll(pattern)];
  if(matches.length!==1)throw sourceError('Unerwartetes geprüftes Manifold-Modulformat; keine unkontrollierte Änderung.','KERNEL_INTEGRITY');
  return code.replace(pattern,(_match,a,b)=>a+JSON.stringify(vendor+'manifold.js')+b);
