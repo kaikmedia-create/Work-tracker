@@ -589,12 +589,16 @@ function conformVerticalChains(mesh,bad,usage){
  return extra.length/3;
 }
 const raster=R.buildMesh;
-function buildArchitecture(data,settings,repairs=[],attempt=0){
+function buildArchitecture(data,settings,repairs=[],attempt=0,detailRetry=0){
  const tick=(step,done,total)=>R.meshProgress?.({step,done,total,pass:attempt+1});tick('Geländeraster',0,1);
  const s=R.cleanSettings(settings),info=R.boundsInfo(data.bounds),w=s.modelWidth,h=w*info.h/info.w,scale=w/info.w;
  // More terrain samples cannot recover missing DEM data. Buildings no longer
  // depend on this terrain resolution at all.
- const n=Math.min(s.resolution,Math.max(65,Math.min(257,(data.terrain.nativeCols?Math.round(data.terrain.nativeCols*1.20):data.terrain.cols)+16)));
+ const requestedN=Math.min(s.resolution,Math.max(65,Math.min(257,(data.terrain.nativeCols?Math.round(data.terrain.nativeCols*1.20):data.terrain.cols)+16)));
+ // Rebuild at a slightly different terrain subdivision only if Float32
+ // triangulation cannot resolve a zero-area seam. This changes the overlay
+ // intersections, not the geographic footprint or the underlying DEM.
+ const n=detailRetry?Math.max(65,Math.round(requestedN*Math.pow(.84,detailRetry))):requestedN;
  const terrain=raster({...data,buildings:[]},{...s,resolution:n,buildingFactor:0,landmarkFactor:1,landmarkWidth:1});
  let low=Infinity;for(const z of data.terrain.values)low=Math.min(low,z);
  const terrainAt=(u,v)=>s.base+Math.max(0,R.sampleTerrain(data.terrain,u,v)-low)*scale*s.terrainFactor;
@@ -640,7 +644,7 @@ function buildArchitecture(data,settings,repairs=[],attempt=0){
   }
   const additions=e.contacts.map(c=>contactPatch(c.a,c.b,c.plane,c.kind,W,H,attempt)).filter(Boolean);
   if(!additions.length)throw e;
-  return buildArchitecture(data,settings,repairs.concat(additions),attempt+1);
+  return buildArchitecture(data,settings,repairs.concat(additions),attempt+1,detailRetry);
  }
  tick('Geschlossenen Körper prüfen',0,result.indices.length/3);const degenerate=retriangulateZeroArea(result);
  stats.zeroAreaRetriangulations=degenerate.fixed;
@@ -666,9 +670,18 @@ function buildArchitecture(data,settings,repairs=[],attempt=0){
    const p=contactPatch(a,b,plane,result.classes[ai/3],W,H,attempt);if(p)additions.push(p);
   }
   if(!additions.length)throw Error('Eine geometrische Naht konnte nicht repariert werden. Kein fehlerhaftes Modell wurde exportiert.');
-  return buildArchitecture(data,settings,repairs.concat(additions),attempt+1);
+  return buildArchitecture(data,settings,repairs.concat(additions),attempt+1,detailRetry);
  }
- if(degenerate.remaining)throw Error('Eine flächenlose Gebäudenaht konnte nicht aufgelöst werden. Kein fehlerhaftes Modell wurde exportiert.');
+ if(degenerate.remaining){
+  // A zero-area triangle caused by Float32 rounding is not repaired by
+  // adding a roof cap; try alternative conforming terrain grids instead.
+  // Every retry runs the complete contact, seam and manifold audit again.
+  if(detailRetry<3&&n>65)return buildArchitecture(data,settings,[],0,detailRetry+1);
+  const failure=Error('Eine flächenlose Gebäudenaht konnte nicht aufgelöst werden. Kein fehlerhaftes Modell wurde exportiert.');
+  failure.code='GEOMETRY_ZERO_AREA';
+  failure.diagnostics={remaining:degenerate.remaining,retriangulated:degenerate.fixed,detailRetry,terrainGrid:n,buildings:stats.buildings};
+  throw failure;
+ }
  let zmax=0;for(let i=2;i<result.vertices.length;i+=3)zmax=Math.max(zmax,result.vertices[i]);
  return {...result,width:W,height:H,zmax,grid:[0,0],cell:terrain.cell,kind:'architecture',architectureVersion:12,geometryKernelVersion:18,architecture:stats,missed:stats.omitted,estimated:stats.heightEstimated,buildingCount:stats.buildings,terrainGrid:terrain.grid};
 }
