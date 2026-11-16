@@ -527,7 +527,11 @@ function retriangulateZeroArea(mesh){
  for(let i=0;i<t.length;i+=3)if(area2(t[i],t[i+1],t[i+2])===0)zero.push(i);
  if(!zero.length)return {fixed:0,remaining:0};
  const edges=new Map(),key=(a,b)=>Math.min(a,b)*n+Math.max(a,b);
- function change(i,add){for(let j=0;j<3;j++){const k=key(t[i+j],t[i+(j+1)%3]);let list=edges.get(k);if(add){if(!list)edges.set(k,list=[]);list.push(i);}else{const at=list.indexOf(i);if(at>=0)list.splice(at,1);if(!list.length)edges.delete(k);}}}
+ // Track only edges incident to zero-area triangles. Scanning every triangle
+ // is necessary to locate their neighbors, but indexing millions of unrelated
+ // edges exhausts browser memory on dense cities such as Bergen.
+ const tracked=new Set();for(const i of zero)for(let j=0;j<3;j++)tracked.add(key(t[i+j],t[i+(j+1)%3]));
+ function change(i,add){for(let j=0;j<3;j++){const k=key(t[i+j],t[i+(j+1)%3]);if(!tracked.has(k))continue;let list=edges.get(k);if(add){if(!list)edges.set(k,list=[]);list.push(i);}else{const at=list.indexOf(i);if(at>=0)list.splice(at,1);if(!list.length)edges.delete(k);}}}
  for(let i=0;i<t.length;i+=3)change(i,true);
  let fixed=0,pending=zero,progress=true;
  while(pending.length&&progress){progress=false;const next=[];
