@@ -35,6 +35,6 @@ for(const [name,chain] of chains){
  const updated={[name]:value};applyUX29(updated);value=updated[name];
  if(value!==original)planned.push({path,value});
 }
-const cssPath=resolve(root,'public/style.css'),oldCss=await readFile(cssPath,'utf8'),styled={'public/style.css':oldCss};applyUX29(styled);if(styled['public/style.css']!==oldCss)planned.push({path:cssPath,value:styled['public/style.css']});
+const cssPath=resolve(root,'public/style.css'),oldCss=await readFile(cssPath,'utf8'),styled={'public/style.css':unapplyUX29('public/style.css',oldCss)};applyUX29(styled);if(styled['public/style.css']!==oldCss)planned.push({path:cssPath,value:styled['public/style.css']});
 for(const {path,value} of planned){const tmp=path+'.release19-'+process.pid;try{await writeFile(tmp,value,'utf8');await rename(tmp,path);}finally{await unlink(tmp).catch(()=>{});}}
 console.log('Release 28 verified; '+planned.length+' source file(s) reconstructed.');
