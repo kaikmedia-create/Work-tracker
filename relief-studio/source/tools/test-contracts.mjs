@@ -56,7 +56,7 @@ export function unapplyTestContracts(name,source){
  if(!source.startsWith(marker))return source;
  const end=source.indexOf(' */\n'),record=JSON.parse(source.slice(marker.length,end));
  if(record.name!==name)throw Error('Wrong historical test contract: '+name);
- let value=source.slice(end+5);const pairs=pairsFor(name);
+ let value=source.slice(end+4);const pairs=pairsFor(name);
  for(const [i,count] of record.edits.slice().reverse()){
   const [before,after]=pairs[i]||[];if(!after||value.split(after).length-1!==count)throw Error('Modified historical test contract: '+name);
   value=value.split(after).join(before);
