@@ -7,5 +7,6 @@ export function composeGate(base){
  const transport="  const exportOld="+JSON.stringify(BASE_EXPORT_TRANSFER)+",exportNew="+JSON.stringify(AUDITED_EXPORT_TRANSFER)+";if(files['public/app.js'].split(exportOld).length!==2)throw Error('Unbekannter geprüfter Export-Quellstand.');files['public/app.js']=files['public/app.js'].replace(exportOld,exportNew);\n";
  const bergen="  const bergen=await(await get('upgrade28-bergen.json')).json();const name='public/architecture.js',c=bergen.changes?.[name];if(bergen.version!=='28-bergen-1'||Object.keys(bergen.changes||{}).length!==1||!c||!Array.isArray(c.edits)||await hash(files[name])!==c.base)throw Error('Bergen-Geometrie: falscher Quellstand');const lines=files[name].split('\\n');for(const [i,n,a] of c.edits.slice().reverse())lines.splice(i,n,...a);const value=lines.join('\\n');if(await hash(value)!==c.result)throw Error('Bergen-Geometrie: Prüfsumme');files[name]=value;\n";
  const ux="  const {applyUX29}=await import('./source/public/relief-ux29.mjs?v=28-poi-1');applyUX29(files);\n";
- return base.replace(anchor,patch+transport+bergen+ux+anchor);
+ const simple="  const {applySimpleStudio}=await import('./source/public/studio-simple.mjs?v=30-simple-1');applySimpleStudio(files);\n";
+ return base.replace(anchor,patch+transport+bergen+ux+simple+anchor);
 }
