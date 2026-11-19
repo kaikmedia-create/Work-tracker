@@ -5,11 +5,12 @@ import {join,dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {Script} from 'node:vm';
 import {applyUX29,unapplyUX29} from '../public/relief-ux29.mjs';
+import {unapplySimpleStudio} from '../public/studio-simple.mjs';
 import {composeGate} from '../public/official-gate.mjs';
 
 const root=dirname(dirname(fileURLToPath(import.meta.url)));
 const site=join(root,'..');
-const read=name=>readFile(join(root,'public',name),'utf8');
+const read=async name=>unapplySimpleStudio('public/'+name,await readFile(join(root,'public',name),'utf8'));
 
 test('UX29 removes editable map dimensions, coordinates, manual buttons and technical notes',async()=>{
  const html=await read('index.html');
